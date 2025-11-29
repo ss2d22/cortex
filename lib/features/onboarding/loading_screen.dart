@@ -19,7 +19,7 @@ class _LoadingScreenState extends State<LoadingScreen>
   double _progress = 0;
   bool _error = false;
   int _modelIndex = 0;
-  static const int _totalModels = 5; // Primary, Embedding, RAG, STT, Vision
+  static const int _totalModels = 5;
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -53,7 +53,6 @@ class _LoadingScreenState extends State<LoadingScreen>
           _progress = progress;
           _status = status;
 
-          // Track model index for overall progress
           if (model == AppConstants.primaryModel) {
             _modelIndex = 0;
           } else if (model == AppConstants.embeddingModel) {
@@ -125,7 +124,6 @@ class _LoadingScreenState extends State<LoadingScreen>
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Animated logo
               ScaleTransition(
                 scale: _pulseAnimation,
                 child: Container(
@@ -151,7 +149,6 @@ class _LoadingScreenState extends State<LoadingScreen>
               ),
               const SizedBox(height: 32),
 
-              // App name
               const Text(
                 'Cortex',
                 style: TextStyle(
@@ -170,9 +167,7 @@ class _LoadingScreenState extends State<LoadingScreen>
               ),
               const SizedBox(height: 48),
 
-              // Progress section
               if (!_error) ...[
-                // Model indicator
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: List.generate(_totalModels, (index) {
@@ -195,7 +190,6 @@ class _LoadingScreenState extends State<LoadingScreen>
                 ),
                 const SizedBox(height: 16),
 
-                // Current model name
                 if (_currentModel.isNotEmpty)
                   Text(
                     _modelDisplayName,
@@ -207,7 +201,6 @@ class _LoadingScreenState extends State<LoadingScreen>
                   ),
                 const SizedBox(height: 8),
 
-                // Progress bar
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
@@ -219,7 +212,6 @@ class _LoadingScreenState extends State<LoadingScreen>
                 ),
                 const SizedBox(height: 12),
 
-                // Status text
                 Text(
                   _status,
                   style: TextStyle(
@@ -230,7 +222,6 @@ class _LoadingScreenState extends State<LoadingScreen>
                 ),
                 const SizedBox(height: 8),
 
-                // Overall progress percentage
                 Text(
                   '${(_overallProgress * 100).toInt()}% complete',
                   style: TextStyle(
@@ -240,7 +231,6 @@ class _LoadingScreenState extends State<LoadingScreen>
                 ),
               ],
 
-              // Error state
               if (_error) ...[
                 Icon(
                   Icons.error_outline,
@@ -282,7 +272,6 @@ class _LoadingScreenState extends State<LoadingScreen>
 
               const Spacer(),
 
-              // Footer
               Text(
                 'Running 100% on-device',
                 style: TextStyle(

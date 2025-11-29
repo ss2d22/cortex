@@ -76,7 +76,6 @@ class EpisodicTimeline extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header with source and time
           Row(
             children: [
               Container(
@@ -128,7 +127,6 @@ class EpisodicTimeline extends StatelessWidget {
           ),
           const SizedBox(height: 12),
 
-          // Content
           Text(
             _truncateContent(episode.content),
             style: AppTheme.bodyMedium.copyWith(
@@ -138,7 +136,6 @@ class EpisodicTimeline extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
 
-          // Strength indicator
           const SizedBox(height: 12),
           Row(
             children: [
@@ -290,7 +287,6 @@ class EpisodicTimeline extends StatelessWidget {
   }
 
   String _truncateContent(String content) {
-    // Remove the "User: " and "Assistant: " prefixes for cleaner display
     String cleaned = content
         .replaceAll(RegExp(r'^User:\s*', multiLine: true), '')
         .replaceAll(RegExp(r'^Assistant:\s*', multiLine: true), '')

@@ -5,7 +5,6 @@ import '../../core/models/semantic_fact.dart';
 import '../../core/models/procedural_memory.dart';
 import 'memory_strength_meter.dart';
 
-/// Card displaying an episodic memory
 class EpisodicMemoryCard extends StatelessWidget {
   final EpisodicMemory memory;
   final VoidCallback? onTap;
@@ -33,7 +32,6 @@ class EpisodicMemoryCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header
               Row(
                 children: [
                   Container(
@@ -68,7 +66,6 @@ class EpisodicMemoryCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
 
-              // Content
               Text(
                 memory.content,
                 style: AppTheme.bodyMedium.copyWith(color: AppTheme.textPrimary),
@@ -77,7 +74,6 @@ class EpisodicMemoryCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
 
-              // Footer with strength
               Row(
                 children: [
                   MemoryStrengthBar(
@@ -110,7 +106,6 @@ class EpisodicMemoryCard extends StatelessWidget {
   }
 }
 
-/// Card displaying a semantic fact
 class SemanticFactCard extends StatelessWidget {
   final SemanticFact fact;
   final VoidCallback? onTap;
@@ -138,7 +133,6 @@ class SemanticFactCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Category icon
             Container(
               width: 36,
               height: 36,
@@ -155,7 +149,6 @@ class SemanticFactCard extends StatelessWidget {
             ),
             const SizedBox(width: 12),
 
-            // Fact content
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -188,7 +181,6 @@ class SemanticFactCard extends StatelessWidget {
               ),
             ),
 
-            // Confidence indicator
             Column(
               children: [
                 Text(
@@ -211,7 +203,6 @@ class SemanticFactCard extends StatelessWidget {
   }
 }
 
-/// Card displaying a procedural rule
 class ProceduralRuleCard extends StatelessWidget {
   final ProceduralMemory procedure;
   final VoidCallback? onTap;
@@ -239,7 +230,6 @@ class ProceduralRuleCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Type icon
             Container(
               width: 36,
               height: 36,
@@ -256,7 +246,6 @@ class ProceduralRuleCard extends StatelessWidget {
             ),
             const SizedBox(width: 12),
 
-            // Description
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -291,7 +280,6 @@ class ProceduralRuleCard extends StatelessWidget {
               ),
             ),
 
-            // Reliability
             Column(
               children: [
                 Text(

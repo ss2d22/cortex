@@ -9,7 +9,6 @@ import '../../core/models/chat_message.dart';
 import '../../core/models/semantic_fact.dart';
 import '../../shared/constants.dart';
 
-/// Manages chat interactions with memory-augmented generation
 class ChatController extends ChangeNotifier {
   final CactusService _cactus;
   late MemoryManager _memory;
@@ -17,7 +16,6 @@ class ChatController extends ChangeNotifier {
   late PersistenceService _persistence;
   final _uuid = const Uuid();
 
-  // Multi-conversation support
   final List<Conversation> _conversations = [];
   List<Conversation> get conversations => List.unmodifiable(_conversations);
 
@@ -29,10 +27,8 @@ class ChatController extends ChangeNotifier {
           ? null
           : _conversations.where((c) => c.id == _currentConversationId).firstOrNull;
 
-  // Message history for current session
   List<ChatMessageModel> get messages => currentConversation?.messages ?? [];
 
-  // Conversation history for LLM context
   final List<ChatMessage> _conversationHistory = [];
 
   bool _generating = false;
@@ -43,7 +39,6 @@ class ChatController extends ChangeNotifier {
 
   ChatController(this._cactus);
 
-  /// Initialize the chat controller
   Future<void> initialize() async {
     if (_ready) return;
     _persistence = PersistenceService();
@@ -51,11 +46,9 @@ class ChatController extends ChangeNotifier {
     await _memory.initialize();
     _tools = ToolHandler(_memory);
 
-    // Load saved conversations
     final savedConversations = await _persistence.loadConversations();
     _conversations.addAll(savedConversations);
 
-    // Load last active conversation
     final lastId = await _persistence.loadCurrentConversationId();
     if (lastId != null && _conversations.any((c) => c.id == lastId)) {
       _currentConversationId = lastId;
@@ -63,10 +56,8 @@ class ChatController extends ChangeNotifier {
     }
 
     _ready = true;
-    debugPrint('ChatController initialized with ${_conversations.length} conversations');
   }
 
-  /// Create a new conversation
   Future<void> createNewConversation() async {
     final now = DateTime.now();
     final conversation = Conversation(
@@ -87,7 +78,6 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Switch to a different conversation
   Future<void> switchToConversation(String id) async {
     if (id == _currentConversationId) return;
 
@@ -101,7 +91,6 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Delete a conversation
   Future<void> deleteConversation(String id) async {
     _conversations.removeWhere((c) => c.id == id);
 
@@ -115,7 +104,6 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Rebuild the LLM conversation history from the current conversation
   void _rebuildConversationHistory() {
     _conversationHistory.clear();
     final conv = currentConversation;
@@ -129,7 +117,6 @@ class ChatController extends ChangeNotifier {
     }
   }
 
-  /// Update conversation title based on first message
   void _updateConversationTitle(String firstMessage) {
     if (currentConversation == null) return;
 
@@ -143,14 +130,12 @@ class ChatController extends ChangeNotifier {
     }
   }
 
-  /// Get mutable messages list for current conversation
   List<ChatMessageModel> get _currentMessages {
     final conv = currentConversation;
     if (conv == null) return [];
     return conv.messages;
   }
 
-  /// Add a message to the current conversation
   void _addMessage(ChatMessageModel message) {
     final idx = _conversations.indexWhere((c) => c.id == _currentConversationId);
     if (idx == -1) return;
@@ -163,7 +148,6 @@ class ChatController extends ChangeNotifier {
     );
   }
 
-  /// Update a message in the current conversation
   void _updateMessageInConversation(String id, ChatMessageModel Function(ChatMessageModel) update) {
     final convIdx = _conversations.indexWhere((c) => c.id == _currentConversationId);
     if (convIdx == -1) return;
@@ -180,33 +164,27 @@ class ChatController extends ChangeNotifier {
     );
   }
 
-  /// Save current conversation state
   Future<void> _saveConversation() async {
     await _persistence.saveConversations(_conversations);
   }
 
-  /// Send a message and generate a response
   Future<void> sendMessage(String text) async {
     if (_generating || text.trim().isEmpty || !_ready) return;
 
-    // Auto-create conversation if none exists
     if (_currentConversationId == null) {
       await createNewConversation();
     }
 
-    // Add user message to UI
     _addMessage(ChatMessageModel(
       id: _uuid.v4(),
       content: text,
       isUser: true,
     ));
 
-    // Update title if this is the first message
     if (_currentMessages.length == 1) {
       _updateConversationTitle(text);
     }
 
-    // Add assistant placeholder
     final assistantId = _uuid.v4();
     _addMessage(ChatMessageModel(
       id: assistantId,
@@ -222,27 +200,21 @@ class ChatController extends ChangeNotifier {
     int usedMemories = 0;
 
     try {
-      // Build memory-augmented context
       final context = await _memory.buildContext(text);
       usedMemories = _memory.workingMemory.activeSlots.length;
 
       final systemPrompt = _buildSystemPrompt(context);
 
-      // Build messages for LLM
       final msgs = <ChatMessage>[
         ChatMessage(content: systemPrompt, role: 'system'),
         ..._conversationHistory.take(AppConstants.maxHistoryTurns * 2),
         ChatMessage(content: text, role: 'user'),
       ];
 
-      debugPrint('Sending message with ${msgs.length} messages, context length: ${context.length}');
-
-      // Generate streaming response
       final stream = await _cactus.generateCompletionStream(
         messages: msgs,
         params: CactusCompletionParams(
           maxTokens: AppConstants.maxResponseTokens,
-          // Tools defined but handled post-generation
           tools: _getMemoryTools(),
         ),
       );
@@ -252,57 +224,41 @@ class ChatController extends ChangeNotifier {
         _updateMessage(assistantId, response, loading: true);
       }
 
-      // Get final result
       CactusCompletionResult? result;
       try {
         result = await stream.result;
-        debugPrint('Response complete. Success: ${result.success}, Tool calls: ${result.toolCalls.length}');
-      } catch (e) {
-        debugPrint('Result parsing error (using streamed response): $e');
-      }
+      } catch (_) {}
 
-      // Handle tool calls silently
       if (result != null && result.toolCalls.isNotEmpty) {
         for (final tc in result.toolCalls) {
-          debugPrint('Executing tool: ${tc.name} with args: ${tc.arguments}');
-          final toolResult = await _tools.handle(tc);
-          debugPrint('Tool result: $toolResult');
+          await _tools.handle(tc);
         }
 
-        // Use result.response if streaming missed content
         if (response.isEmpty && result.response.isNotEmpty) {
           response = result.response;
         }
       }
 
-      // Clean response
       response = _cleanResponse(response);
 
-      // Fallback if empty
       if (response.isEmpty || response.length < 3) {
         response = "I'm here to help! What would you like to talk about?";
       }
 
       _updateMessage(assistantId, response, loading: false, usedMemories: usedMemories);
 
-      // Update conversation history
       _conversationHistory.add(ChatMessage(content: text, role: 'user'));
       _conversationHistory.add(ChatMessage(content: response, role: 'assistant'));
 
-      // Trim history if too long
       while (_conversationHistory.length > AppConstants.maxHistoryTurns * 2) {
         _conversationHistory.removeAt(0);
       }
 
-      // Store in episodic memory
       await _memory.storeConversation(text, response);
-      debugPrint('Conversation stored in memory');
 
-      // Save conversation to persistence
       await _saveConversation();
 
     } catch (e) {
-      debugPrint('Error in sendMessage: $e');
       await _handleError(assistantId, e);
     } finally {
       _generating = false;
@@ -385,20 +341,16 @@ WHAT TO AVOID:
 
   String _cleanResponse(String response) {
     String cleaned = response
-        // Remove code blocks
         .replaceAll(RegExp(r"```[a-z]*\n?", caseSensitive: false), '')
         .replaceAll(RegExp(r"'''[a-z]*\n?", caseSensitive: false), '')
         .replaceAll(RegExp(r'```'), '')
         .replaceAll(RegExp(r"'''"), '')
-        // Remove thinking tags
         .replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '')
         .replaceAll(RegExp(r'<think>.*$', dotAll: true), '')
-        // Remove function call artifacts
         .replaceAll(RegExp(r'function_call\s*[:\(\{].*', caseSensitive: false, dotAll: true), '')
         .replaceAll(RegExp(r'function_call', caseSensitive: false), '')
         .replaceAll(RegExp(r'\bname\s*:\s*\w+', caseSensitive: false), '')
         .replaceAll(RegExp(r'\barguments\s*:\s*.*', caseSensitive: false), '')
-        // Remove JSON structures
         .replaceAll(RegExp(r'\{[^{}]*"[^{}]*\}', dotAll: true), '')
         .replaceAll(RegExp(r'\{"[a-zA-Z_]+":', dotAll: true), '')
         .replaceAll(RegExp(r'\{[^\}]{0,100}\}', dotAll: true), '')
@@ -406,16 +358,13 @@ WHAT TO AVOID:
         .replaceAll(RegExp(r'"name"\s*:\s*"[a-zA-Z_]+"', dotAll: true), '')
         .replaceAll(RegExp(r'"arguments"\s*:\s*[^\n]*', dotAll: true), '')
         .replaceAll(RegExp(r'\("[a-zA-Z_]+"\s*:\s*[^\)]*\)', dotAll: true), '')
-        // Remove tool output artifacts
         .replaceAll(RegExp(r'^No facts stored yet\.\s*\n?', multiLine: true), '')
         .replaceAll(RegExp(r'^Remembered:.*\n?', multiLine: true), '')
         .replaceAll(RegExp(r'^Found:.*\n?', multiLine: true), '')
-        // Remove special tokens
         .replaceAll(RegExp(r'<\|[^|>]*\|>'), '')
         .replaceAll(RegExp(r'<\|im_end\|>'), '')
         .replaceAll(RegExp(r'</s>'), '')
         .replaceAll(RegExp(r'<\|endoftext\|>'), '')
-        // Clean up whitespace
         .replaceAll(RegExp(r'^\s*[:\}\{\]\[]+\s*', multiLine: true), '')
         .replaceAll(RegExp(r'\s*[:\}\{\]\[]+\s*$', multiLine: true), '')
         .replaceAll(RegExp(r'^\s*[\{\}\[\]:,]+\s*$', multiLine: true), '')
@@ -447,7 +396,6 @@ WHAT TO AVOID:
     final errorStr = error.toString();
 
     if (errorStr.contains('context') || errorStr.contains('initialize')) {
-      debugPrint('Context error detected, attempting reinitialize...');
       try {
         await _cactus.reinitializePrimaryLM();
         _updateMessage(
@@ -455,8 +403,7 @@ WHAT TO AVOID:
           "I had a brief hiccup. Please try your message again!",
           loading: false,
         );
-      } catch (reinitError) {
-        debugPrint('Reinitialize failed: $reinitError');
+      } catch (_) {
         _updateMessage(
           messageId,
           "Something went wrong. Please restart the app.",
@@ -472,11 +419,9 @@ WHAT TO AVOID:
     }
   }
 
-  /// Process a photo for memory storage
   Future<void> processPhoto(String path) async {
     if (!_ready || _generating) return;
 
-    // Auto-create conversation if none exists
     if (_currentConversationId == null) {
       await createNewConversation();
     }
@@ -534,11 +479,9 @@ WHAT TO AVOID:
     notifyListeners();
   }
 
-  /// Process voice recording for transcription and memory
   Future<void> processVoice(String path) async {
     if (!_ready || _generating) return;
 
-    // Auto-create conversation if none exists
     if (_currentConversationId == null) {
       await createNewConversation();
     }
@@ -557,12 +500,10 @@ WHAT TO AVOID:
       final text = await _memory.ingestVoice(path);
       _updateUserMessage(userMsgId, '"$text"');
 
-      // Update title if this is the first message
       if (_currentMessages.length == 1) {
         _updateConversationTitle(text);
       }
 
-      // Add assistant placeholder
       final assistantId = _uuid.v4();
       _addMessage(ChatMessageModel(
         id: assistantId,
@@ -572,7 +513,6 @@ WHAT TO AVOID:
       ));
       notifyListeners();
 
-      // Generate response (same logic as sendMessage)
       String response = '';
       int usedMemories = 0;
 
@@ -603,9 +543,7 @@ WHAT TO AVOID:
       CactusCompletionResult? result;
       try {
         result = await stream.result;
-      } catch (e) {
-        debugPrint('Result parsing error: $e');
-      }
+      } catch (_) {}
 
       if (result != null && result.toolCalls.isNotEmpty) {
         for (final tc in result.toolCalls) {
@@ -624,25 +562,21 @@ WHAT TO AVOID:
 
       _updateMessage(assistantId, response, loading: false, usedMemories: usedMemories);
 
-      // Update conversation history
       _conversationHistory.add(ChatMessage(content: text, role: 'user'));
       _conversationHistory.add(ChatMessage(content: response, role: 'assistant'));
 
-      // Store in episodic memory
       await _memory.storeConversation(text, response);
       await _saveConversation();
 
       _generating = false;
       notifyListeners();
-    } catch (e) {
-      debugPrint('Error processing voice: $e');
+    } catch (_) {
       _updateUserMessage(userMsgId, 'Voice (failed)');
       _generating = false;
       notifyListeners();
     }
   }
 
-  /// Clear current chat session (starts a new conversation)
   Future<void> clearChat() async {
     _conversationHistory.clear();
     _memory.clearHistory();
@@ -650,7 +584,6 @@ WHAT TO AVOID:
     notifyListeners();
   }
 
-  /// Clear all memory and chat
   Future<void> clearAll() async {
     await _memory.clearAll();
     _conversations.clear();
@@ -661,7 +594,6 @@ WHAT TO AVOID:
     notifyListeners();
   }
 
-  // Getters for memory data
   List<SemanticFact> getFacts() => _memory.getAllFacts();
   MemoryStatistics getMemoryStats() => _memory.getStatistics();
   MemoryManager get memoryManager => _memory;

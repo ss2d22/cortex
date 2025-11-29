@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
 
-/// Animated circular meter showing memory strength
 class MemoryStrengthMeter extends StatelessWidget {
   final double strength;
   final double size;
@@ -18,7 +17,6 @@ class MemoryStrengthMeter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Guard against NaN values
     final safeStrength = strength.isNaN || strength.isInfinite ? 0.0 : strength.clamp(0.0, 1.0);
     final color = AppTheme.getStrengthColor(safeStrength);
 
@@ -31,7 +29,6 @@ class MemoryStrengthMeter extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              // Background circle
               SizedBox(
                 width: size,
                 height: size,
@@ -44,7 +41,6 @@ class MemoryStrengthMeter extends StatelessWidget {
                   ),
                 ),
               ),
-              // Progress circle
               TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0, end: safeStrength),
                 duration: const Duration(milliseconds: 800),
@@ -63,7 +59,6 @@ class MemoryStrengthMeter extends StatelessWidget {
                   );
                 },
               ),
-              // Center text
               Text(
                 '${(safeStrength * 100).toInt()}%',
                 style: TextStyle(
@@ -95,7 +90,6 @@ class MemoryStrengthMeter extends StatelessWidget {
   }
 }
 
-/// Horizontal bar showing memory strength
 class MemoryStrengthBar extends StatelessWidget {
   final double strength;
   final double height;
@@ -110,7 +104,6 @@ class MemoryStrengthBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Guard against NaN values
     final safeStrength = strength.isNaN || strength.isInfinite ? 0.0 : strength.clamp(0.0, 1.0);
     final color = AppTheme.getStrengthColor(safeStrength);
 

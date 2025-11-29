@@ -9,32 +9,26 @@ import '../../shared/constants.dart';
 import 'cactus_service.dart';
 import 'persistence_service.dart';
 
-/// Unified memory system with human-inspired cognitive architecture
-/// Manages episodic, semantic, and procedural memory layers
 class MemoryManager extends ChangeNotifier {
   final CactusService _cactus;
   final PersistenceService _persistence;
   final _uuid = const Uuid();
 
-  // Memory stores
   final List<SemanticFact> _facts = [];
   final List<ProceduralMemory> _procedures = [];
   final List<EpisodicMemory> _recentEpisodes = [];
   final WorkingMemory _workingMemory = WorkingMemory();
 
-  // Extraction queue for background processing
   final List<_ExtractionTask> _extractionQueue = [];
   bool _isExtracting = false;
 
   MemoryManager(this._cactus, this._persistence);
 
-  // Public getters
   WorkingMemory get workingMemory => _workingMemory;
   List<SemanticFact> get facts => List.unmodifiable(_facts);
   List<ProceduralMemory> get procedures => List.unmodifiable(_procedures);
   List<EpisodicMemory> get recentEpisodes => List.unmodifiable(_recentEpisodes);
 
-  /// Initialize memory system, loading persisted data
   Future<void> initialize() async {
     final savedFacts = await _persistence.loadFacts();
     _facts.addAll(savedFacts);
@@ -45,15 +39,9 @@ class MemoryManager extends ChangeNotifier {
     final savedEpisodes = await _persistence.loadEpisodes();
     _recentEpisodes.addAll(savedEpisodes);
 
-    debugPrint('MemoryManager initialized: ${_facts.length} facts, ${_procedures.length} procedures, ${_recentEpisodes.length} episodes');
     notifyListeners();
   }
 
-  // ============================================
-  // EPISODIC MEMORY - Experiences & Events
-  // ============================================
-
-  /// Store an episodic memory with automatic embedding
   Future<EpisodicMemory> storeEpisodic({
     required String content,
     required MemorySource source,
@@ -73,7 +61,6 @@ class MemoryManager extends ChangeNotifier {
     );
 
     try {
-      // Store in RAG for vector retrieval
       await _cactus.rag.storeDocument(
         fileName: id,
         filePath: '',
@@ -81,29 +68,21 @@ class MemoryManager extends ChangeNotifier {
         fileSize: content.length,
       );
 
-      // Cache in recent episodes
       _recentEpisodes.add(memory);
       if (_recentEpisodes.length > 50) {
         _recentEpisodes.removeAt(0);
       }
 
-      // Persist episodic memories
       await _persistence.saveEpisodes(_recentEpisodes);
 
-      debugPrint('Stored episodic memory: $id (importance: $importance, source: ${source.name})');
-
-      // Queue for semantic extraction (non-blocking)
       _queueExtraction(content, id);
 
       notifyListeners();
-    } catch (e) {
-      debugPrint('Error storing episodic memory: $e');
-    }
+    } catch (_) {}
 
     return memory;
   }
 
-  /// Store a conversation exchange as episodic memory
   Future<void> storeConversation(String userMsg, String assistantMsg) async {
     final importance = _assessImportance(userMsg);
     final valence = _detectValence(userMsg);
@@ -115,20 +94,15 @@ class MemoryManager extends ChangeNotifier {
       valence: valence,
     );
 
-    // Update working memory
     _workingMemory.addConversationTurn('user', userMsg);
     _workingMemory.addConversationTurn('assistant', assistantMsg);
   }
 
-  /// Retrieve relevant episodic memories for a query
   Future<List<MemoryRetrievalResult>> retrieveRelevant(
     String query, {
     int limit = AppConstants.maxRetrievedMemories,
   }) async {
-    if (query.trim().length < 10) {
-      debugPrint('Query too short for retrieval');
-      return [];
-    }
+    if (query.trim().length < 10) return [];
 
     try {
       final ragResults = await _cactus.rag.search(text: query, limit: limit * 2);
@@ -139,10 +113,8 @@ class MemoryManager extends ChangeNotifier {
         final content = EpisodicMemory.extractContent(r.chunk.content);
         final meta = EpisodicMemory.extractMetadata(r.chunk.content);
 
-        // Calculate relevance based on position
         final relevanceScore = 1.0 - (i / ragResults.length) * 0.5;
 
-        // Calculate memory strength with decay
         double strength = 0.5;
         if (meta != null) {
           final memory = EpisodicMemory.fromStorageFormat(r.chunk.content);
@@ -162,25 +134,17 @@ class MemoryManager extends ChangeNotifier {
 
       results.sort((a, b) => b.combinedScore.compareTo(a.combinedScore));
       return results.take(limit).toList();
-    } catch (e) {
-      debugPrint('Error retrieving memories: $e');
+    } catch (_) {
       return [];
     }
   }
 
-  // ============================================
-  // SEMANTIC MEMORY - Facts & Knowledge
-  // ============================================
-
-  /// Get all active (non-contradicted) facts
   List<SemanticFact> getAllFacts() =>
     _facts.where((f) => !f.isContradicted).toList();
 
-  /// Get facts by category
   List<SemanticFact> getFactsByCategory(FactCategory category) =>
     _facts.where((f) => f.category == category && !f.isContradicted).toList();
 
-  /// Get facts formatted for LLM context
   String getFactsAsContext() {
     final activeFacts = getAllFacts();
     if (activeFacts.isEmpty) return 'No facts known yet.';
@@ -194,7 +158,6 @@ class MemoryManager extends ChangeNotifier {
       .join('\n');
   }
 
-  /// Add or update a semantic fact
   void addOrUpdateFact(SemanticFact newFact) {
     final existingIndex = _facts.indexWhere(
       (f) => f.subject.toLowerCase() == newFact.subject.toLowerCase() &&
@@ -205,26 +168,18 @@ class MemoryManager extends ChangeNotifier {
       final existing = _facts[existingIndex];
       if (existing.object.toLowerCase() == newFact.object.toLowerCase()) {
         existing.reinforce();
-        debugPrint('Reinforced fact: ${newFact.asNaturalLanguage}');
       } else {
         existing.markContradicted(newFact.id);
         _facts.add(newFact);
-        debugPrint('Updated fact (contradiction): ${existing.asNaturalLanguage} -> ${newFact.asNaturalLanguage}');
       }
     } else {
       _facts.add(newFact);
-      debugPrint('Added new fact: ${newFact.asNaturalLanguage}');
     }
 
     _persistence.saveFacts(_facts);
     notifyListeners();
   }
 
-  // ============================================
-  // PROCEDURAL MEMORY - Learned Patterns
-  // ============================================
-
-  /// Get procedures relevant to current context
   List<ProceduralMemory> getRelevantProcedures(String context) {
     return _procedures
       .where((p) => p.matchesContext(context) && p.currentConfidence > 0.3)
@@ -232,7 +187,6 @@ class MemoryManager extends ChangeNotifier {
       ..sort((a, b) => b.currentConfidence.compareTo(a.currentConfidence));
   }
 
-  /// Add or update a procedural memory
   void addOrUpdateProcedure(ProceduralMemory newProc) {
     final existingIndex = _procedures.indexWhere((p) =>
       p.description.toLowerCase().contains(
@@ -242,36 +196,26 @@ class MemoryManager extends ChangeNotifier {
 
     if (existingIndex != -1) {
       _procedures[existingIndex].reinforce();
-      debugPrint('Reinforced procedure: ${newProc.description}');
     } else {
       _procedures.add(newProc);
-      debugPrint('Added new procedure: ${newProc.description}');
     }
 
     _persistence.saveProcedures(_procedures);
     notifyListeners();
   }
 
-  // ============================================
-  // WORKING MEMORY - Active Context
-  // ============================================
-
-  /// Build context for LLM prompt
   Future<String> buildContext(String query) async {
     final buffer = StringBuffer();
 
     _workingMemory.setUserStatement(query);
 
-    // Add semantic facts
     buffer.writeln('## Known facts about the user:');
     buffer.writeln(getFactsAsContext());
 
-    // Populate working memory with relevant facts
     for (final fact in getAllFacts().take(5)) {
       _workingMemory.addFact(fact, relevance: 0.7);
     }
 
-    // Add relevant procedures
     final relevantProcs = getRelevantProcedures(query);
     if (relevantProcs.isNotEmpty) {
       buffer.writeln('\n## Behavioral guidelines:');
@@ -281,7 +225,6 @@ class MemoryManager extends ChangeNotifier {
       }
     }
 
-    // Add relevant episodic memories
     try {
       final memories = await retrieveRelevant(query);
       if (memories.isNotEmpty) {
@@ -290,40 +233,27 @@ class MemoryManager extends ChangeNotifier {
           buffer.writeln('- ${m.content}');
         }
       }
-    } catch (e) {
-      debugPrint('Error building context: $e');
-    }
+    } catch (_) {}
 
     return buffer.toString();
   }
 
-  // ============================================
-  // VOICE & PHOTO INGESTION
-  // ============================================
-
-  /// Transcribe and store voice memo
   Future<String> ingestVoice(String audioPath) async {
     final stt = await _cactus.getSTT();
 
-    // Use exactly the same pattern as the working Cactus example
     String streamedText = "";
 
     final streamedResult = await stt.transcribeStream(
       audioFilePath: audioPath,
     );
 
-    // Use listen() exactly like the example
     streamedResult.stream.listen(
       (token) {
         streamedText += token;
-        debugPrint('STT token: $token');
       },
-      onError: (error) {
-        debugPrint('STT stream error: $error');
-      },
+      onError: (_) {},
     );
 
-    // Wait for final result
     final result = await streamedResult.result;
 
     await _cactus.unloadSTT();
@@ -341,20 +271,16 @@ class MemoryManager extends ChangeNotifier {
     throw Exception('Transcription failed: ${result.errorMessage}');
   }
 
-  /// Clean Whisper special tokens from transcription output
   String _cleanWhisperOutput(String text) {
-    // Remove Whisper special tokens
     final cleaned = text
-        .replaceAll(RegExp(r'<\|[^|>]+\|>'), '') // Remove <|token|> patterns
-        .replaceAll(RegExp(r'\[.*?\]'), '') // Remove [BLANK_AUDIO] etc
+        .replaceAll(RegExp(r'<\|[^|>]+\|>'), '')
+        .replaceAll(RegExp(r'\[.*?\]'), '')
         .trim();
     return cleaned;
   }
 
-  /// Analyze and store photo
   Future<String> ingestPhoto(String imagePath) async {
     try {
-      debugPrint('Starting photo analysis for: $imagePath');
       final visionLM = await _cactus.getVisionLM();
 
       final result = await visionLM.generateCompletion(
@@ -372,8 +298,6 @@ class MemoryManager extends ChangeNotifier {
         params: CactusCompletionParams(maxTokens: 150),
       );
 
-      debugPrint('Vision result: success=${result.success}');
-
       if (result.success && result.response.isNotEmpty) {
         await storeEpisodic(
           content: 'Photo: ${result.response}',
@@ -385,15 +309,9 @@ class MemoryManager extends ChangeNotifier {
       throw Exception('Vision returned empty response');
     } finally {
       await _cactus.restorePrimaryLM();
-      debugPrint('Primary LM restored after vision');
     }
   }
 
-  // ============================================
-  // EXPLICIT MEMORY OPERATIONS (Tool Handlers)
-  // ============================================
-
-  /// Explicitly remember something important
   Future<void> rememberExplicitly(
     String content, {
     ImportanceLevel importance = ImportanceLevel.high,
@@ -405,7 +323,6 @@ class MemoryManager extends ChangeNotifier {
     );
   }
 
-  /// Recall memories matching a query
   Future<String> recallMemories(String query) async {
     final memories = await retrieveRelevant(query);
     if (memories.isEmpty) return 'No memories found for: "$query"';
@@ -415,7 +332,6 @@ class MemoryManager extends ChangeNotifier {
     ).join('\n')}';
   }
 
-  /// List all known facts
   String listAllFacts() {
     final allFacts = getAllFacts();
     if (allFacts.isEmpty) return 'No facts stored yet.';
@@ -434,10 +350,6 @@ class MemoryManager extends ChangeNotifier {
     }
     return buffer.toString();
   }
-
-  // ============================================
-  // FACT EXTRACTION (Background Processing)
-  // ============================================
 
   void _queueExtraction(String content, String memoryId) {
     String userContent = content;
@@ -465,20 +377,16 @@ class MemoryManager extends ChangeNotifier {
       final task = _extractionQueue.removeAt(0);
       try {
         await _extractWithRegex(task.content, task.memoryId);
-      } catch (e) {
-        debugPrint('Extraction error: $e');
-      }
+      } catch (_) {}
     }
 
     _isExtracting = false;
   }
 
-  /// Extract facts using regex patterns (reliable for small models)
   Future<void> _extractWithRegex(String userMessage, String memoryId) async {
     final text = userMessage.toLowerCase().replaceAll(''', "'").replaceAll(''', "'");
     int extracted = 0;
 
-    // Name patterns
     final nameMatch = RegExp(
       r"(?:i'm|i am|my name is|call me)\s+([a-z]{2,15})(?:\s|,|\.|\!|$)",
       caseSensitive: false,
@@ -493,7 +401,6 @@ class MemoryManager extends ChangeNotifier {
       }
     }
 
-    // Company patterns
     final companyMatch = RegExp(
       r"(?:work(?:ing)?|employed)\s+(?:at|for)\s+([a-z0-9]+)",
       caseSensitive: false,
@@ -507,7 +414,6 @@ class MemoryManager extends ChangeNotifier {
       }
     }
 
-    // Job patterns
     final jobMatch = RegExp(
       r"(?:i'm a|i am a|work as a?)\s+([a-z]+(?:\s+[a-z]+)?)",
       caseSensitive: false,
@@ -522,7 +428,6 @@ class MemoryManager extends ChangeNotifier {
       }
     }
 
-    // Location patterns
     final locationMatch = RegExp(
       r"(?:live in|from|based in|located in)\s+([a-z]+(?:\s+[a-z]+)?)",
       caseSensitive: false,
@@ -536,7 +441,6 @@ class MemoryManager extends ChangeNotifier {
       }
     }
 
-    // Age patterns
     final ageMatch = RegExp(
       r"(?:i'm|i am)\s+(\d{1,3})\s*(?:years?\s*old)?",
       caseSensitive: false,
@@ -550,7 +454,6 @@ class MemoryManager extends ChangeNotifier {
       }
     }
 
-    // Emotion patterns
     final emotions = ['stressed', 'anxious', 'happy', 'sad', 'angry', 'frustrated', 'tired', 'exhausted', 'excited', 'nervous', 'overwhelmed'];
     for (final emotion in emotions) {
       if (RegExp(r"\b" + emotion + r"\b").hasMatch(text)) {
@@ -560,7 +463,6 @@ class MemoryManager extends ChangeNotifier {
       }
     }
 
-    // Pet patterns
     final petMatch = RegExp(
       r"(?:i have|my|got)\s+(?:a\s+)?(?:pet\s+)?([a-z]+)\s+(?:named|called)\s+([a-z]+)",
       caseSensitive: false,
@@ -574,7 +476,6 @@ class MemoryManager extends ChangeNotifier {
       }
     }
 
-    // Hobby patterns
     final hobbyMatch = RegExp(
       r"(?:i\s+(?:like|love|enjoy)\s+(?:to\s+)?|my hobby is\s+)([a-z]+(?:ing)?(?:\s+[a-z]+)?)",
       caseSensitive: false,
@@ -587,7 +488,6 @@ class MemoryManager extends ChangeNotifier {
       }
     }
 
-    // Relationship patterns
     final relationshipMatch = RegExp(
       r"my\s+(wife|husband|partner|boyfriend|girlfriend|spouse)'?s?\s+(?:name is\s+)?([a-z]+)",
       caseSensitive: false,
@@ -601,7 +501,6 @@ class MemoryManager extends ChangeNotifier {
       }
     }
 
-    // Children patterns
     final childMatch = RegExp(
       r"(?:i have|my)\s+(?:a\s+)?(?:(\d+)\s+)?(?:kid|child|son|daughter)s?(?:\s+named\s+([a-z]+))?",
       caseSensitive: false,
@@ -618,7 +517,6 @@ class MemoryManager extends ChangeNotifier {
       }
     }
 
-    // Birthday patterns
     final birthdayMatch = RegExp(
       r"my birthday is\s+(?:on\s+)?([a-z]+\s+\d{1,2}|\d{1,2}[\/\-]\d{1,2})",
       caseSensitive: false,
@@ -631,7 +529,6 @@ class MemoryManager extends ChangeNotifier {
       }
     }
 
-    // Likes/Dislikes patterns
     final likesMatch = RegExp(
       r"i\s+(?:really\s+)?(?:like|love)\s+([a-z]+(?:\s+[a-z]+)?)",
       caseSensitive: false,
@@ -656,17 +553,14 @@ class MemoryManager extends ChangeNotifier {
       }
     }
 
-    // Extract procedures
     _extractProcedures(text, memoryId);
 
     if (extracted > 0) {
       await _persistence.saveFacts(_facts);
-      debugPrint('Extracted $extracted facts');
     }
   }
 
   void _extractProcedures(String text, String memoryId) {
-    // Preference patterns
     final preferMatch = RegExp(
       r"i\s+prefer\s+([a-zA-Z\s]+?)(?:\.|,|$)",
       caseSensitive: false,
@@ -687,7 +581,6 @@ class MemoryManager extends ChangeNotifier {
       }
     }
 
-    // Rule patterns (don't, never, always)
     final rulePatterns = [
       (RegExp(r"don'?t\s+([a-zA-Z\s]+?)(?:\.|,|$)", caseSensitive: false), 'avoid'),
       (RegExp(r"never\s+([a-zA-Z\s]+?)(?:\.|,|$)", caseSensitive: false), 'never'),
@@ -756,10 +649,6 @@ class MemoryManager extends ChangeNotifier {
     return EmotionalValence.neutral;
   }
 
-  // ============================================
-  // STATISTICS
-  // ============================================
-
   MemoryStatistics getStatistics() {
     return MemoryStatistics(
       episodicCount: _recentEpisodes.length,
@@ -777,10 +666,6 @@ class MemoryManager extends ChangeNotifier {
 
   SemanticMemoryStats getSemanticStats() => SemanticMemoryStats.fromFacts(_facts);
 
-  // ============================================
-  // CLEANUP
-  // ============================================
-
   void clearHistory() {
     _workingMemory.clear();
     notifyListeners();
@@ -796,7 +681,6 @@ class MemoryManager extends ChangeNotifier {
   }
 }
 
-/// Result of memory retrieval with scoring
 class MemoryRetrievalResult {
   final String content;
   final double relevanceScore;
@@ -813,7 +697,6 @@ class MemoryRetrievalResult {
   });
 }
 
-/// Overall memory system statistics
 class MemoryStatistics {
   final int episodicCount;
   final int semanticFactCount;
@@ -834,7 +717,6 @@ class MemoryStatistics {
   int get totalMemories => episodicCount + semanticFactCount + proceduralCount;
 }
 
-/// Task for background extraction queue
 class _ExtractionTask {
   final String content;
   final String memoryId;

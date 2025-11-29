@@ -1,41 +1,33 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // Core brand colors
-  static const Color primaryColor = Color(0xFF6366F1);    // Indigo
-  static const Color secondaryColor = Color(0xFF8B5CF6);  // Purple
-  static const Color accentColor = Color(0xFF06B6D4);     // Cyan
+  static const Color primaryColor = Color(0xFF6366F1);
+  static const Color secondaryColor = Color(0xFF8B5CF6);
+  static const Color accentColor = Color(0xFF06B6D4);
 
-  // Background colors
   static const Color backgroundColor = Color(0xFF0F0F23);
   static const Color surfaceColor = Color(0xFF1A1A2E);
   static const Color surfaceLight = Color(0xFF252542);
   static const Color cardColor = Color(0xFF1E1E38);
 
-  // Memory type colors
-  static const Color episodicColor = Color(0xFF3B82F6);   // Blue - experiences
-  static const Color semanticColor = Color(0xFF10B981);   // Emerald - facts
-  static const Color proceduralColor = Color(0xFFF59E0B); // Amber - patterns
-  static const Color workingColor = Color(0xFFEC4899);    // Pink - active
+  static const Color episodicColor = Color(0xFF3B82F6);
+  static const Color semanticColor = Color(0xFF10B981);
+  static const Color proceduralColor = Color(0xFFF59E0B);
+  static const Color workingColor = Color(0xFFEC4899);
 
-  // Strength/decay gradient
-  static const Color strengthHigh = Color(0xFF22C55E);    // Green
-  static const Color strengthMedium = Color(0xFFEAB308);  // Yellow
-  static const Color strengthLow = Color(0xFFEF4444);     // Red
+  static const Color strengthHigh = Color(0xFF22C55E);
+  static const Color strengthMedium = Color(0xFFEAB308);
+  static const Color strengthLow = Color(0xFFEF4444);
 
-  // Emotional valence colors
-  static const Color positiveColor = Color(0xFF34D399);   // Emerald light
-  static const Color neutralColor = Color(0xFF94A3B8);    // Slate
-  static const Color negativeColor = Color(0xFFF87171);   // Red light
+  static const Color positiveColor = Color(0xFF34D399);
+  static const Color neutralColor = Color(0xFF94A3B8);
+  static const Color negativeColor = Color(0xFFF87171);
 
-  // Text colors
   static const Color textPrimary = Color(0xFFF8FAFC);
   static const Color textSecondary = Color(0xFF94A3B8);
   static const Color textMuted = Color(0xFF64748B);
 
-  // Get color for memory strength (0-1)
   static Color getStrengthColor(double strength) {
-    // Guard against NaN and out-of-range values
     if (strength.isNaN || strength.isInfinite) return strengthLow;
     final s = strength.clamp(0.0, 1.0);
     if (s >= 0.7) return strengthHigh;
@@ -43,16 +35,13 @@ class AppTheme {
     return strengthLow;
   }
 
-  // Get color with opacity based on strength
   static Color getStrengthColorWithOpacity(double strength) {
-    // Guard against NaN and out-of-range values
     if (strength.isNaN || strength.isInfinite) strength = 0.0;
     final s = strength.clamp(0.0, 1.0);
     final baseColor = getStrengthColor(s);
     return baseColor.withAlpha(((0.3 + s * 0.7) * 255).round());
   }
 
-  // Memory type gradients
   static LinearGradient get episodicGradient => const LinearGradient(
     colors: [Color(0xFF3B82F6), Color(0xFF1D4ED8)],
     begin: Alignment.topLeft,
@@ -83,7 +72,6 @@ class AppTheme {
     end: Alignment.bottomRight,
   );
 
-  // Card decoration
   static BoxDecoration get cardDecoration => BoxDecoration(
     color: cardColor,
     borderRadius: BorderRadius.circular(16),
@@ -106,7 +94,6 @@ class AppTheme {
     ),
   );
 
-  // Text styles
   static const TextStyle headingLarge = TextStyle(
     fontSize: 28,
     fontWeight: FontWeight.bold,
@@ -150,14 +137,11 @@ class AppTheme {
     color: textMuted,
   );
 
-  // Button styles
   static ButtonStyle get primaryButton => ElevatedButton.styleFrom(
     backgroundColor: primaryColor,
     foregroundColor: Colors.white,
     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(12),
-    ),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     elevation: 0,
   );
 
@@ -165,9 +149,7 @@ class AppTheme {
     backgroundColor: surfaceLight,
     foregroundColor: textPrimary,
     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(12),
-    ),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     elevation: 0,
   );
 
@@ -176,7 +158,6 @@ class AppTheme {
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
   );
 
-  // Theme data
   static ThemeData get darkTheme => ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
@@ -218,7 +199,6 @@ class AppTheme {
   );
 }
 
-// Memory category to color mapping
 extension MemoryCategoryColors on String {
   Color get categoryColor {
     switch (toLowerCase()) {

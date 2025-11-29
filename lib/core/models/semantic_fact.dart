@@ -1,19 +1,17 @@
 import 'dart:math' as math;
 
-/// Categories for semantic facts
 enum FactCategory {
-  identity,      // Name, age, etc.
-  work,          // Job, company, career
-  relationships, // Family, friends
-  preferences,   // Likes, dislikes
-  events,        // Birthdays, anniversaries
-  location,      // Where they live, from
-  health,        // Medical, fitness
-  hobbies,       // Interests, activities
-  other,         // Uncategorized
+  identity,
+  work,
+  relationships,
+  preferences,
+  events,
+  location,
+  health,
+  hobbies,
+  other,
 }
 
-/// A semantic triple representing a fact about the user
 class SemanticFact {
   final String id;
   final String subject;
@@ -24,7 +22,6 @@ class SemanticFact {
   int reinforceCount;
   DateTime lastReinforcedAt;
 
-  // Contradiction tracking
   bool isContradicted;
   String? contradictedBy;
 
@@ -42,41 +39,33 @@ class SemanticFact {
   }) : sourceMemoryIds = sourceMemoryIds ?? [],
        lastReinforcedAt = lastReinforcedAt ?? extractedAt;
 
-  /// Confidence in this fact (0-1) based on reinforcement
   double get confidence {
     if (isContradicted) return 0.1;
-    // Logarithmic growth: more reinforcements = higher confidence
     final base = math.min(1.0, 0.5 + (math.log(reinforceCount + 1) / math.log(10)) * 0.25);
-    // Decay slightly if not recently reinforced
     final daysSinceReinforced = DateTime.now().difference(lastReinforcedAt).inDays;
     final recencyFactor = 1.0 / (1.0 + daysSinceReinforced * 0.01);
     return base * recencyFactor;
   }
 
-  /// Natural language representation
   String get asNaturalLanguage {
     final verb = predicate.replaceAll('_', ' ');
     return '$subject $verb $object';
   }
 
-  /// Short form for compact display
   String get shortForm {
     return '${predicate.replaceAll('_', ' ')}: $object';
   }
 
-  /// Reinforce this fact (seen again)
   void reinforce() {
     reinforceCount++;
     lastReinforcedAt = DateTime.now();
   }
 
-  /// Mark as contradicted by another fact
   void markContradicted(String newFactId) {
     isContradicted = true;
     contradictedBy = newFactId;
   }
 
-  /// Get category based on predicate
   FactCategory get category {
     final p = predicate.toLowerCase();
     if (['name_is', 'age_is', 'gender_is', 'nickname_is'].contains(p)) {
@@ -106,7 +95,6 @@ class SemanticFact {
     return FactCategory.other;
   }
 
-  /// Category icon for UI
   String get categoryIcon {
     switch (category) {
       case FactCategory.identity: return '👤';
@@ -121,7 +109,6 @@ class SemanticFact {
     }
   }
 
-  /// Confidence indicator for UI
   String get confidenceIndicator {
     final c = confidence;
     if (c >= 0.8) return '●●●●';
@@ -131,7 +118,6 @@ class SemanticFact {
     return '○○○○';
   }
 
-  /// Age of fact for display
   String get ageDescription {
     final diff = DateTime.now().difference(extractedAt);
     if (diff.inMinutes < 1) return 'just now';
@@ -197,7 +183,6 @@ class SemanticFact {
   }
 }
 
-/// Statistics about semantic memory
 class SemanticMemoryStats {
   final int totalFacts;
   final Map<FactCategory, int> factsByCategory;

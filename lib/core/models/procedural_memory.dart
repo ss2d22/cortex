@@ -1,44 +1,39 @@
 import 'dart:math' as math;
 
-/// Types of procedural knowledge
 enum ProceduralType {
-  preference,    // "User prefers X over Y"
-  habit,         // "User usually does X at time Y"
-  pattern,       // "When X happens, user tends to Y"
-  rule,          // "Always/never do X"
-  skill,         // "User knows how to X"
+  preference,
+  habit,
+  pattern,
+  rule,
+  skill,
 }
 
-/// Confidence level in the learned procedure
 enum ConfidenceLevel {
-  tentative(0.3),   // Observed once or twice
-  emerging(0.5),    // Pattern becoming clear
-  established(0.75), // Consistent pattern
-  certain(0.95);    // Very reliable
+  tentative(0.3),
+  emerging(0.5),
+  established(0.75),
+  certain(0.95);
 
   final double value;
   const ConfidenceLevel(this.value);
 }
 
-/// A learned behavioral pattern or preference
 class ProceduralMemory {
   final String id;
   final ProceduralType type;
-  final String description;      // Natural language description
-  final String condition;        // When this applies (e.g., "morning", "work topics")
-  final String action;           // What to do (e.g., "be concise", "suggest coffee")
+  final String description;
+  final String condition;
+  final String action;
   final DateTime learnedAt;
-  final List<String> evidenceIds; // Memory IDs that support this
+  final List<String> evidenceIds;
 
-  // Learning metrics
   int observationCount;
-  int successCount;        // Times this pattern was confirmed
-  int failureCount;        // Times this pattern was violated
+  int successCount;
+  int failureCount;
   DateTime lastObservedAt;
   ConfidenceLevel confidence;
 
-  // Decay tracking
-  static const double _decayRatePerDay = 0.02; // 2% decay per day without reinforcement
+  static const double _decayRatePerDay = 0.02;
 
   ProceduralMemory({
     required this.id,
@@ -55,12 +50,10 @@ class ProceduralMemory {
     this.confidence = ConfidenceLevel.tentative,
   }) : lastObservedAt = lastObservedAt ?? learnedAt;
 
-  /// Calculate current confidence with decay
   double get currentConfidence {
     final daysSinceObserved = DateTime.now().difference(lastObservedAt).inHours / 24.0;
     final decayFactor = math.exp(-_decayRatePerDay * daysSinceObserved);
 
-    // Base confidence from observations
     final successRate = observationCount > 0
         ? successCount / observationCount
         : 0.5;
@@ -68,21 +61,18 @@ class ProceduralMemory {
     return math.min(1.0, confidence.value * decayFactor * (0.5 + successRate * 0.5));
   }
 
-  /// Reliability score (how often this pattern holds true)
   double get reliability {
     final total = successCount + failureCount;
-    if (total == 0) return 0.5; // Unknown
+    if (total == 0) return 0.5;
     return successCount / total;
   }
 
-  /// Reinforce the pattern (observed again)
   void reinforce({bool success = true}) {
     observationCount++;
     lastObservedAt = DateTime.now();
 
     if (success) {
       successCount++;
-      // Upgrade confidence level based on observation count
       if (confidence == ConfidenceLevel.tentative && observationCount >= 3) {
         confidence = ConfidenceLevel.emerging;
       } else if (confidence == ConfidenceLevel.emerging && observationCount >= 7) {
@@ -92,24 +82,20 @@ class ProceduralMemory {
       }
     } else {
       failureCount++;
-      // Downgrade confidence on failures
       if (failureCount > successCount && confidence != ConfidenceLevel.tentative) {
         confidence = ConfidenceLevel.values[confidence.index - 1];
       }
     }
   }
 
-  /// Check if this procedure should be applied given a context
   bool matchesContext(String context) {
     final lowerContext = context.toLowerCase();
     final lowerCondition = condition.toLowerCase();
 
-    // Simple keyword matching for now
     final keywords = lowerCondition.split(RegExp(r'[\s,]+'));
     return keywords.any((kw) => kw.isNotEmpty && lowerContext.contains(kw));
   }
 
-  /// Natural language representation for the LLM
   String get asInstruction {
     switch (type) {
       case ProceduralType.preference:
@@ -125,7 +111,6 @@ class ProceduralMemory {
     }
   }
 
-  /// Icon for UI display
   String get typeIcon {
     switch (type) {
       case ProceduralType.preference: return '❤️';
@@ -136,7 +121,6 @@ class ProceduralMemory {
     }
   }
 
-  /// Confidence indicator for UI
   String get confidenceIndicator {
     switch (confidence) {
       case ConfidenceLevel.tentative: return '○○○○';
@@ -217,7 +201,6 @@ class ProceduralMemory {
   }
 }
 
-/// Collection of procedures for a specific context
 class ProceduralContext {
   final String name;
   final List<ProceduralMemory> procedures;
@@ -227,14 +210,12 @@ class ProceduralContext {
     required this.procedures,
   });
 
-  /// Get procedures sorted by confidence
   List<ProceduralMemory> get sortedByConfidence {
     final sorted = List<ProceduralMemory>.from(procedures);
     sorted.sort((a, b) => b.currentConfidence.compareTo(a.currentConfidence));
     return sorted;
   }
 
-  /// Get only high-confidence procedures
   List<ProceduralMemory> get reliable {
     return procedures.where((p) => p.currentConfidence >= 0.6).toList();
   }

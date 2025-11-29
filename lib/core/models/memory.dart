@@ -13,7 +13,6 @@ enum ImportanceLevel {
   const ImportanceLevel(this.value);
 }
 
-/// Emotional valence for memory coloring
 enum EmotionalValence {
   positive(1.0),
   neutral(0.0),
@@ -23,14 +22,12 @@ enum EmotionalValence {
   const EmotionalValence(this.value);
 }
 
-/// Consolidation state - memories strengthen over time through rehearsal
 enum ConsolidationState {
-  shortTerm,   // Fresh, vulnerable to decay
-  consolidating, // Being strengthened
-  longTerm,    // Stable, resistant to decay
+  shortTerm,
+  consolidating,
+  longTerm,
 }
 
-/// Enhanced Episodic Memory with human-like decay and strengthening
 class EpisodicMemory {
   final String id;
   final String content;
@@ -40,18 +37,15 @@ class EpisodicMemory {
   final List<String> emotionalTags;
   final EmotionalValence valence;
 
-  // Access tracking
   int accessCount;
   DateTime lastAccessedAt;
 
-  // Consolidation
   ConsolidationState consolidationState;
   int rehearsalCount;
 
-  // Decay constants (in hours)
-  static const double _halfLifeBase = 24.0; // Base half-life in hours
-  static const double _accessBonus = 0.15; // Each access extends half-life by 15%
-  static const double _importanceMultiplier = 2.0; // Important memories decay slower
+  static const double _halfLifeBase = 24.0;
+  static const double _accessBonus = 0.15;
+  static const double _importanceMultiplier = 2.0;
 
   EpisodicMemory({
     required this.id,
@@ -67,14 +61,11 @@ class EpisodicMemory {
     this.rehearsalCount = 0,
   }) : lastAccessedAt = lastAccessedAt ?? timestamp;
 
-  /// Calculate memory decay based on Ebbinghaus forgetting curve
-  /// Returns value between 0 (forgotten) and 1 (fresh)
   double get decayScore {
     final now = DateTime.now();
     final hoursSinceCreation = now.difference(timestamp).inMinutes / 60.0;
     final hoursSinceAccess = now.difference(lastAccessedAt).inMinutes / 60.0;
 
-    // Calculate effective half-life based on access patterns and importance
     final accessMultiplier = 1.0 + (accessCount * _accessBonus);
     final importanceBonus = importance * _importanceMultiplier;
     final consolidationBonus = consolidationState == ConsolidationState.longTerm
@@ -83,36 +74,29 @@ class EpisodicMemory {
 
     final effectiveHalfLife = _halfLifeBase * accessMultiplier * importanceBonus * consolidationBonus;
 
-    // Use time since last access for recency bonus
     final recencyWeight = math.exp(-hoursSinceAccess / (effectiveHalfLife * 0.5));
 
-    // Ebbinghaus forgetting curve: R = e^(-t/S) where S is stability
     final retention = math.exp(-hoursSinceCreation / effectiveHalfLife);
 
-    // Combine retention with recency (recently accessed memories feel stronger)
     return math.min(1.0, retention * 0.7 + recencyWeight * 0.3);
   }
 
-  /// Overall memory strength combining importance, decay, and access frequency
-  /// This is the primary metric for retrieval ranking
   double get strength {
-    final accessBonus = math.log(accessCount + 1) / math.log(10); // log10(accessCount + 1)
+    final accessBonus = math.log(accessCount + 1) / math.log(10);
     final emotionalBonus = valence != EmotionalValence.neutral ? 0.1 : 0.0;
 
     return math.min(1.0,
-      importance * 0.4 +           // Base importance
-      decayScore * 0.35 +          // Time-based decay
-      accessBonus * 0.15 +         // Access frequency bonus
-      emotionalBonus * 0.1         // Emotional salience
+      importance * 0.4 +
+      decayScore * 0.35 +
+      accessBonus * 0.15 +
+      emotionalBonus * 0.1
     );
   }
 
-  /// Mark memory as accessed, updating tracking
   void recordAccess() {
     accessCount++;
     lastAccessedAt = DateTime.now();
 
-    // Progress consolidation based on access patterns
     if (consolidationState == ConsolidationState.shortTerm && accessCount >= 3) {
       consolidationState = ConsolidationState.consolidating;
     } else if (consolidationState == ConsolidationState.consolidating && accessCount >= 7) {
@@ -120,7 +104,6 @@ class EpisodicMemory {
     }
   }
 
-  /// Rehearse memory (strengthens consolidation without full access)
   void rehearse() {
     rehearsalCount++;
     if (rehearsalCount >= 5 && consolidationState == ConsolidationState.shortTerm) {
@@ -128,7 +111,6 @@ class EpisodicMemory {
     }
   }
 
-  /// Get human-readable age string
   String get ageDescription {
     final now = DateTime.now();
     final diff = now.difference(timestamp);
@@ -141,7 +123,6 @@ class EpisodicMemory {
     return '${(diff.inDays / 30).floor()}mo ago';
   }
 
-  /// Get strength description for UI
   String get strengthDescription {
     final s = strength;
     if (s >= 0.8) return 'Very Strong';
@@ -151,7 +132,6 @@ class EpisodicMemory {
     return 'Fading';
   }
 
-  /// Icon for memory source
   String get sourceIcon {
     switch (source) {
       case MemorySource.conversation: return '💬';

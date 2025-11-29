@@ -2,24 +2,22 @@ import 'memory.dart';
 import 'semantic_fact.dart';
 import 'procedural_memory.dart';
 
-/// Slot types in working memory
 enum WorkingMemorySlotType {
-  userStatement,      // Current user input
-  relevantEpisode,    // Retrieved episodic memory
-  activeFact,         // Active semantic fact
-  activeRule,         // Active procedural rule
-  conversationTurn,   // Recent conversation context
-  goal,               // Current conversation goal
+  userStatement,
+  relevantEpisode,
+  activeFact,
+  activeRule,
+  conversationTurn,
+  goal,
 }
 
-/// A single item in working memory with activation level
 class WorkingMemorySlot {
   final String id;
   final WorkingMemorySlotType type;
   final String content;
-  final double activation;        // How "hot" this item is (0-1)
+  final double activation;
   final DateTime addedAt;
-  final String? sourceId;         // ID of source memory if applicable
+  final String? sourceId;
 
   WorkingMemorySlot({
     required this.id,
@@ -30,15 +28,12 @@ class WorkingMemorySlot {
     this.sourceId,
   }) : addedAt = addedAt ?? DateTime.now();
 
-  /// Decay activation over time (items fade from working memory)
   double get currentActivation {
     final secondsElapsed = DateTime.now().difference(addedAt).inSeconds;
-    // Rapid decay - items fade in minutes, not hours
     final decayFactor = 1.0 / (1.0 + secondsElapsed / 60.0);
     return activation * decayFactor;
   }
 
-  /// Check if still active enough to include
   bool get isActive => currentActivation > 0.1;
 
   WorkingMemorySlot withActivation(double newActivation) {
@@ -53,9 +48,8 @@ class WorkingMemorySlot {
   }
 }
 
-/// Dynamic working memory that combines all memory types for context
 class WorkingMemory {
-  static const int maxSlots = 7; // Miller's Law: 7 +/- 2 items
+  static const int maxSlots = 7;
   static const int maxConversationTurns = 4;
 
   final List<WorkingMemorySlot> _slots = [];
@@ -69,9 +63,7 @@ class WorkingMemory {
   String? get currentGoal => _currentGoal;
   String? get currentTopic => _currentTopic;
 
-  /// Add a new item to working memory
   void add(WorkingMemorySlot slot) {
-    // Remove old item of same type if exists
     _slots.removeWhere((s) =>
       s.type == slot.type &&
       s.type != WorkingMemorySlotType.conversationTurn &&
@@ -83,7 +75,6 @@ class WorkingMemory {
     _enforceCapacity();
   }
 
-  /// Add user's current statement
   void setUserStatement(String statement) {
     _slots.removeWhere((s) => s.type == WorkingMemorySlotType.userStatement);
     add(WorkingMemorySlot(
@@ -94,7 +85,6 @@ class WorkingMemory {
     ));
   }
 
-  /// Set current conversation goal
   void setGoal(String goal) {
     _currentGoal = goal;
     add(WorkingMemorySlot(
@@ -105,12 +95,10 @@ class WorkingMemory {
     ));
   }
 
-  /// Update detected topic
   void setTopic(String topic) {
     _currentTopic = topic;
   }
 
-  /// Add relevant episodic memory
   void addEpisode(EpisodicMemory episode, {double relevance = 0.5}) {
     add(WorkingMemorySlot(
       id: 'ep_${episode.id}',
@@ -121,7 +109,6 @@ class WorkingMemory {
     ));
   }
 
-  /// Add active semantic fact
   void addFact(SemanticFact fact, {double relevance = 0.5}) {
     add(WorkingMemorySlot(
       id: 'fact_${fact.id}',
@@ -132,7 +119,6 @@ class WorkingMemory {
     ));
   }
 
-  /// Add active procedural rule
   void addRule(ProceduralMemory rule, {double relevance = 0.5}) {
     add(WorkingMemorySlot(
       id: 'rule_${rule.id}',
@@ -143,9 +129,7 @@ class WorkingMemory {
     ));
   }
 
-  /// Add conversation turn
   void addConversationTurn(String role, String content) {
-    // Keep only recent turns
     final turns = _slots.where((s) =>
       s.type == WorkingMemorySlotType.conversationTurn).toList();
     if (turns.length >= maxConversationTurns * 2) {
@@ -162,9 +146,7 @@ class WorkingMemory {
     ));
   }
 
-  /// Enforce capacity limits (remove least active items)
   void _enforceCapacity() {
-    // Don't remove conversation turns or current user statement
     final removable = _slots.where((s) =>
       s.type != WorkingMemorySlotType.conversationTurn &&
       s.type != WorkingMemorySlotType.userStatement &&
@@ -178,28 +160,23 @@ class WorkingMemory {
     }
   }
 
-  /// Prune inactive items
   void prune() {
     _slots.removeWhere((s) => !s.isActive);
   }
 
-  /// Clear working memory
   void clear() {
     _slots.clear();
     _currentGoal = null;
     _currentTopic = null;
   }
 
-  /// Build context string for LLM prompt
   String buildContextPrompt() {
     final buffer = StringBuffer();
     final active = activeSlots;
 
-    // Group by type
     final facts = active.where((s) => s.type == WorkingMemorySlotType.activeFact);
     final episodes = active.where((s) => s.type == WorkingMemorySlotType.relevantEpisode);
     final rules = active.where((s) => s.type == WorkingMemorySlotType.activeRule);
-    // Conversation turns are included in recent context, not in the prompt
 
     if (_currentGoal != null) {
       buffer.writeln('## Current Goal');
@@ -234,7 +211,6 @@ class WorkingMemory {
     return buffer.toString();
   }
 
-  /// Get memory usage stats
   Map<String, int> get stats {
     final active = activeSlots;
     return {
@@ -246,7 +222,6 @@ class WorkingMemory {
     };
   }
 
-  /// Visual representation of working memory load
   String get loadIndicator {
     final load = activeSlots.length / maxSlots;
     if (load < 0.3) return '▁▁▁';
@@ -257,7 +232,6 @@ class WorkingMemory {
   }
 }
 
-/// Summary of what's currently in working memory (for UI display)
 class WorkingMemorySummary {
   final int totalSlots;
   final int activeFactCount;

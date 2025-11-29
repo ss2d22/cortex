@@ -5,7 +5,7 @@ class ChatMessageModel {
   final DateTime timestamp;
   final bool isLoading;
   final String? imageUrl;
-  final int usedMemories; // Number of memories used to generate this response
+  final int usedMemories;
 
   ChatMessageModel({
     required this.id,
@@ -50,7 +50,6 @@ class ChatMessageModel {
   );
 }
 
-/// Represents a conversation with multiple messages
 class Conversation {
   final String id;
   final String title;
@@ -78,7 +77,6 @@ class Conversation {
     messages: messages ?? this.messages,
   );
 
-  /// Get a preview of the conversation (first user message or title)
   String get preview {
     final firstUserMsg = messages.where((m) => m.isUser).firstOrNull;
     if (firstUserMsg != null && firstUserMsg.content.isNotEmpty) {
@@ -89,7 +87,6 @@ class Conversation {
     return title;
   }
 
-  /// Get relative time description
   String get timeDescription {
     final now = DateTime.now();
     final diff = now.difference(updatedAt);

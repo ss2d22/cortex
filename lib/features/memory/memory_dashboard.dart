@@ -92,10 +92,8 @@ class _MemoryDashboardState extends State<MemoryDashboard>
       ),
       body: Column(
         children: [
-          // Stats header
           _buildStatsHeader(),
 
-          // Tab bar
           Container(
             color: AppTheme.surfaceColor,
             child: TabBar(
@@ -114,7 +112,6 @@ class _MemoryDashboardState extends State<MemoryDashboard>
             ),
           ),
 
-          // Tab content
           Expanded(
             child: TabBarView(
               controller: _tabController,
@@ -213,11 +210,9 @@ class _MemoryDashboardState extends State<MemoryDashboard>
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Welcome card
         _buildWelcomeCard(stats),
         const SizedBox(height: 20),
 
-        // Memory health
         Text('Memory Health', style: AppTheme.headingSmall),
         const SizedBox(height: 12),
         Row(
@@ -243,7 +238,6 @@ class _MemoryDashboardState extends State<MemoryDashboard>
         ),
         const SizedBox(height: 24),
 
-        // Recent facts
         if (facts.isNotEmpty) ...[
           Row(
             children: [
@@ -312,7 +306,6 @@ class _MemoryDashboardState extends State<MemoryDashboard>
               ],
             ),
           ),
-          // Show fact count instead of confusing percentage
           Container(
             width: 60,
             height: 60,

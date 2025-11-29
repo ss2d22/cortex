@@ -40,19 +40,15 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _initRecorder() async {
-    // Initialize recorder with 16kHz mono 16-bit format for Whisper
     Recorder.instance.init(
       sampleRate: 16000,
       channels: RecorderChannels.mono,
       format: PCMFormat.s16le,
     );
-    // Give native side time to initialize
     await Future.delayed(const Duration(milliseconds: 100));
-    // Start the capture device (required before startRecording)
     Recorder.instance.start();
     await Future.delayed(const Duration(milliseconds: 100));
     _recorderInitialized = true;
-    debugPrint('Recorder initialized and capture started');
   }
 
   void _update() {
@@ -73,13 +69,10 @@ class _ChatScreenState extends State<ChatScreen> {
     _ctrl.removeListener(_update);
     _text.dispose();
     _scroll.dispose();
-    // Stop capture if running
     if (_recorderInitialized) {
       try {
         Recorder.instance.stop();
-      } catch (e) {
-        debugPrint('Error stopping recorder: $e');
-      }
+      } catch (_) {}
     }
     super.dispose();
   }
@@ -147,7 +140,6 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
       body: Column(
         children: [
-          // Recording indicator
           if (_isRecording)
             Container(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
@@ -172,7 +164,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
 
-          // Messages
           Expanded(
             child: _ctrl.messages.isEmpty
                 ? _buildEmptyState()
@@ -184,7 +175,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
           ),
 
-          // Input bar
           InputBar(
             controller: _text,
             isGenerating: _ctrl.isGenerating,
@@ -204,7 +194,6 @@ class _ChatScreenState extends State<ChatScreen> {
       child: SafeArea(
         child: Column(
           children: [
-            // Header
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -244,7 +233,6 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
 
-            // Conversation list
             Expanded(
               child: _ctrl.conversations.isEmpty
                   ? Center(
@@ -348,7 +336,6 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
             ),
 
-            // Footer with memory stats
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -442,7 +429,6 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Logo with gradient
             Container(
               width: 90,
               height: 90,
@@ -465,7 +451,6 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(height: 28),
 
-            // Title
             const Text(
               'Meet Cortex',
               style: TextStyle(
@@ -481,7 +466,6 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(height: 32),
 
-            // Privacy highlight
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -525,7 +509,6 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(height: 24),
 
-            // Features list
             _buildFeatureRow(Icons.memory, 'Remembers facts about you'),
             const SizedBox(height: 12),
             _buildFeatureRow(Icons.mic, 'Understands voice memos'),
@@ -536,7 +519,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
             const SizedBox(height: 32),
 
-            // Try saying section
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
@@ -656,7 +638,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      // Check permission based on source
       Permission permission = source == ImageSource.camera
           ? Permission.camera
           : Permission.photos;
@@ -737,15 +718,12 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _startRecording() async {
     try {
-      // Check current permission status first
       var status = await Permission.microphone.status;
 
-      // If not determined, request permission
       if (status.isDenied || status.isRestricted) {
         status = await Permission.microphone.request();
       }
 
-      // Handle permanently denied - show dialog to open settings
       if (status.isPermanentlyDenied) {
         if (mounted) {
           final openSettings = await showDialog<bool>(
@@ -788,10 +766,7 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
 
-      // Wait for recorder to be initialized if not ready
       if (!_recorderInitialized) {
-        debugPrint('Waiting for recorder initialization...');
-        // Re-init just in case it wasn't done
         Recorder.instance.init(
           sampleRate: 16000,
           channels: RecorderChannels.mono,
@@ -803,19 +778,15 @@ class _ChatScreenState extends State<ChatScreen> {
         _recorderInitialized = true;
       }
 
-      // Create path for recording
       final appDir = await getApplicationDocumentsDirectory();
       final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.wav';
       _recordingPath = p.join(appDir.path, 'audio', fileName);
 
-      // Ensure directory exists
       final audioDir = Directory(p.dirname(_recordingPath!));
       if (!await audioDir.exists()) {
         await audioDir.create(recursive: true);
       }
 
-      debugPrint('Starting recording to: $_recordingPath');
-      // Start recording to WAV file
       Recorder.instance.startRecording(completeFilePath: _recordingPath!);
 
       setState(() {
@@ -839,9 +810,7 @@ class _ChatScreenState extends State<ChatScreen> {
         _isRecording = false;
       });
 
-      // Use the path we saved when starting recording
       if (_recordingPath != null && _recordingPath!.isNotEmpty) {
-        // Small delay to ensure file is written
         await Future.delayed(const Duration(milliseconds: 100));
         _ctrl.processVoice(_recordingPath!);
       }

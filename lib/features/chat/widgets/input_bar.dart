@@ -36,7 +36,6 @@ class InputBar extends StatelessWidget {
       child: SafeArea(
         child: Row(
           children: [
-            // Photo button
             IconButton(
               icon: const Icon(Icons.photo_camera),
               color: AppTheme.primaryColor,
@@ -44,7 +43,6 @@ class InputBar extends StatelessWidget {
               tooltip: 'Add photo',
             ),
 
-            // Voice button
             IconButton(
               icon: Icon(
                 isRecording ? Icons.stop : Icons.mic,
@@ -54,7 +52,6 @@ class InputBar extends StatelessWidget {
               tooltip: isRecording ? 'Stop recording' : 'Voice memo',
             ),
 
-            // Text input
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
@@ -83,7 +80,6 @@ class InputBar extends StatelessWidget {
 
             const SizedBox(width: 8),
 
-            // Send button
             Container(
               decoration: BoxDecoration(
                 color: isGenerating || isRecording

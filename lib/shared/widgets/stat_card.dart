@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme.dart';
 
-/// Compact stat card for dashboard overview
 class StatCard extends StatelessWidget {
   final String title;
   final String value;
@@ -82,7 +81,6 @@ class StatCard extends StatelessWidget {
   }
 }
 
-/// Large feature card with gradient
 class FeatureCard extends StatelessWidget {
   final String title;
   final String description;
@@ -154,7 +152,6 @@ class FeatureCard extends StatelessWidget {
   }
 }
 
-/// Memory type selector tab
 class MemoryTypeTab extends StatelessWidget {
   final String label;
   final IconData icon;
@@ -209,7 +206,6 @@ class MemoryTypeTab extends StatelessWidget {
   }
 }
 
-/// Working memory load indicator
 class WorkingMemoryIndicator extends StatelessWidget {
   final double load;
 

@@ -27,7 +27,6 @@ class _MessageBubbleState extends State<MessageBubble> {
         child: Column(
           crossAxisAlignment: message.isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            // Image preview
             if (message.imageUrl != null) ...[
               ClipRRect(
                 borderRadius: BorderRadius.circular(12),
@@ -41,7 +40,6 @@ class _MessageBubbleState extends State<MessageBubble> {
               const SizedBox(height: 8),
             ],
 
-            // Message content
             if (message.isUser)
               _buildUserBubble(message)
             else
@@ -90,7 +88,6 @@ class _MessageBubbleState extends State<MessageBubble> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Thinking section (collapsible)
         if (hasThinking) ...[
           GestureDetector(
             onTap: () => setState(() => _showThinking = !_showThinking),
@@ -146,7 +143,6 @@ class _MessageBubbleState extends State<MessageBubble> {
           const SizedBox(height: 8),
         ],
 
-        // Main response
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
@@ -170,7 +166,6 @@ class _MessageBubbleState extends State<MessageBubble> {
                 ),
               ),
 
-              // Memory indicator (if memories were used)
               if (message.usedMemories > 0) ...[
                 const SizedBox(height: 12),
                 Container(
@@ -252,7 +247,6 @@ class _MessageBubbleState extends State<MessageBubble> {
       response = content.replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '').trim();
     }
 
-    // Clean up response
     response = response
         .replaceAll(RegExp(r'<\|im_end\|>'), '')
         .replaceAll(RegExp(r'</s>'), '')

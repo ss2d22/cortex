@@ -157,7 +157,6 @@ class _ProceduralRulesViewState extends State<ProceduralRulesView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
           Row(
             children: [
               Container(
@@ -196,7 +195,6 @@ class _ProceduralRulesViewState extends State<ProceduralRulesView> {
             ],
           ),
 
-          // Action
           if (proc.action.isNotEmpty) ...[
             const SizedBox(height: 12),
             Container(
@@ -224,7 +222,6 @@ class _ProceduralRulesViewState extends State<ProceduralRulesView> {
             ),
           ],
 
-          // Confidence and reinforcement info
           const SizedBox(height: 12),
           Row(
             children: [

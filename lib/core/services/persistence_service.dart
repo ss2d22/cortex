@@ -13,10 +13,6 @@ class PersistenceService {
   static const String _currentConversationKey = 'cortex_current_conversation';
   static const String _settingsKey = 'cortex_settings';
 
-  //============================================
-  // SEMANTIC FACTS
-  //============================================
-
   Future<void> saveFacts(List<SemanticFact> facts) async {
     final prefs = await SharedPreferences.getInstance();
     final json = facts.map((f) => f.toJson()).toList();
@@ -35,10 +31,6 @@ class PersistenceService {
       return [];
     }
   }
-
-  //============================================
-  // PROCEDURAL MEMORY
-  //============================================
 
   Future<void> saveProcedures(List<ProceduralMemory> procedures) async {
     final prefs = await SharedPreferences.getInstance();
@@ -59,13 +51,8 @@ class PersistenceService {
     }
   }
 
-  //============================================
-  // EPISODIC MEMORY
-  //============================================
-
   Future<void> saveEpisodes(List<EpisodicMemory> episodes) async {
     final prefs = await SharedPreferences.getInstance();
-    // Store the full storage format which includes metadata
     final json = episodes.map((e) => e.toStorageFormat()).toList();
     await prefs.setString(_episodesKey, jsonEncode(json));
   }
@@ -84,10 +71,6 @@ class PersistenceService {
       return [];
     }
   }
-
-  //============================================
-  // CONVERSATIONS
-  //============================================
 
   Future<void> saveConversations(List<Conversation> conversations) async {
     final prefs = await SharedPreferences.getInstance();
@@ -124,10 +107,6 @@ class PersistenceService {
     return prefs.getString(_currentConversationKey);
   }
 
-  //============================================
-  // SETTINGS
-  //============================================
-
   Future<void> saveSetting(String key, dynamic value) async {
     final prefs = await SharedPreferences.getInstance();
     final settings = await _loadSettings();
@@ -150,10 +129,6 @@ class PersistenceService {
       return {};
     }
   }
-
-  //============================================
-  // CLEAR
-  //============================================
 
   Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();

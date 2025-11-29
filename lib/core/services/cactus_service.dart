@@ -1,75 +1,222 @@
 import 'package:cactus/cactus.dart';
+import 'package:flutter/foundation.dart';
 import '../../shared/constants.dart';
 
-typedef ProgressCallback = void Function(String model, double progress, String status);
+/// Progress callback for model downloads
+typedef ProgressCallback = void Function(
+  String model,
+  double progress,
+  String status,
+);
 
-class CactusService {
-  late CactusLM lm;
+/// Manages all Cactus SDK instances (LLM, STT, RAG, Vision)
+/// Implements lazy loading to minimize memory footprint
+class CactusService extends ChangeNotifier {
+  // Primary instances
+  CactusLM? _primaryLM;
+  CactusLM? _embeddingLM;
+  CactusRAG? _rag;
+
+  // Lazy-loaded instances
   CactusLM? _visionLM;
   CactusSTT? _stt;
-  late CactusRAG rag;
 
-  bool _initialized = false;
+  // State tracking
+  bool _primaryInitialized = false;
+  bool _embeddingInitialized = false;
+  bool _ragInitialized = false;
   bool _visionInitialized = false;
   bool _sttInitialized = false;
 
-  bool get isInitialized => _initialized;
+  // Currently active model (for model switching)
+  String? _activeModel;
+
+  // Progress callback
+  ProgressCallback? onProgress;
+
+  /// Get the currently active model name
+  String? get activeModel => _activeModel;
+
+  // Getters for state
+  bool get isReady => _primaryInitialized && _ragInitialized;
+  bool get isPrimaryReady => _primaryInitialized;
+  bool get isEmbeddingReady => _embeddingInitialized;
+  bool get isRagReady => _ragInitialized;
   bool get isVisionReady => _visionInitialized;
   bool get isSttReady => _sttInitialized;
 
-  ProgressCallback? onProgress;
+  CactusLM get primaryLM {
+    if (_primaryLM == null || !_primaryInitialized) {
+      throw StateError('Primary LM not initialized. Call initialize() first.');
+    }
+    return _primaryLM!;
+  }
 
-  /// Initialize only the main LM and RAG at startup (lighter memory footprint)
+  CactusRAG get rag {
+    if (_rag == null || !_ragInitialized) {
+      throw StateError('RAG not initialized. Call initialize() first.');
+    }
+    return _rag!;
+  }
+
+  /// Initialize the core services (Primary LLM + Embedding + RAG)
   Future<void> initialize() async {
-    if (_initialized) return;
+    if (isReady) return;
 
-    // Initialize main LM only
-    lm = CactusLM(enableToolFiltering: true);
-    rag = CactusRAG();
+    try {
+      // Step 1: Download and initialize primary model
+      await _initializePrimaryLM();
 
-    // Download and initialize main model
-    await _downloadModel(lm, AppConstants.mainModel);
+      // Step 2: Download and initialize embedding model
+      await _initializeEmbeddingLM();
 
-    onProgress?.call(AppConstants.mainModel, 1.0, 'Initializing main model...');
-    await lm.initializeModel(
+      // Step 3: Initialize RAG with embedding generator
+      await _initializeRAG();
+
+      debugPrint('CactusService fully initialized');
+    } catch (e) {
+      debugPrint('CactusService initialization failed: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> _initializePrimaryLM() async {
+    _primaryLM = CactusLM(enableToolFiltering: true);
+
+    onProgress?.call(AppConstants.primaryModel, 0, 'Downloading primary model...');
+
+    await _primaryLM!.downloadModel(
+      model: AppConstants.primaryModel,
+      downloadProcessCallback: (progress, status, isError) {
+        if (!isError) {
+          onProgress?.call(AppConstants.primaryModel, progress ?? 0, status);
+        } else {
+          debugPrint('Primary model download error: $status');
+        }
+      },
+    );
+
+    onProgress?.call(AppConstants.primaryModel, 1.0, 'Initializing primary model...');
+
+    await _primaryLM!.initializeModel(
       params: CactusInitParams(
-        model: AppConstants.mainModel,
-        contextSize: AppConstants.defaultContextSize,
+        model: AppConstants.primaryModel,
+        contextSize: AppConstants.contextSize,
       ),
     );
 
-    // Initialize RAG
-    onProgress?.call('RAG', 1.0, 'Initializing memory database...');
-    await rag.initialize();
+    _primaryInitialized = true;
+    _activeModel = AppConstants.primaryModel;
+    debugPrint('Primary LM initialized: ${AppConstants.primaryModel}');
+  }
 
-    // Set embedding generator - uses LOCAL embeddings from main LM
-    rag.setEmbeddingGenerator((text) async {
-      final result = await lm.generateEmbedding(text: text);
+  Future<void> _initializeEmbeddingLM() async {
+    _embeddingLM = CactusLM();
+
+    onProgress?.call(AppConstants.embeddingModel, 0, 'Downloading embedding model...');
+
+    await _embeddingLM!.downloadModel(
+      model: AppConstants.embeddingModel,
+      downloadProcessCallback: (progress, status, isError) {
+        if (!isError) {
+          onProgress?.call(AppConstants.embeddingModel, progress ?? 0, status);
+        } else {
+          debugPrint('Embedding model download error: $status');
+        }
+      },
+    );
+
+    onProgress?.call(AppConstants.embeddingModel, 1.0, 'Initializing embedding model...');
+
+    await _embeddingLM!.initializeModel(
+      params: CactusInitParams(model: AppConstants.embeddingModel),
+    );
+
+    _embeddingInitialized = true;
+    debugPrint('Embedding LM initialized: ${AppConstants.embeddingModel}');
+  }
+
+  Future<void> _initializeRAG() async {
+    _rag = CactusRAG();
+
+    onProgress?.call('RAG', 0.5, 'Initializing memory database...');
+
+    await _rag!.initialize();
+
+    // Use dedicated embedding model for higher quality vectors
+    _rag!.setEmbeddingGenerator((text) async {
+      if (!_embeddingInitialized || _embeddingLM == null) {
+        throw StateError('Embedding model not initialized');
+      }
+      final result = await _embeddingLM!.generateEmbedding(text: text);
       return result.embeddings;
     });
 
-    rag.setChunking(
+    _rag!.setChunking(
       chunkSize: AppConstants.chunkSize,
       chunkOverlap: AppConstants.chunkOverlap,
     );
 
-    _initialized = true;
+    _ragInitialized = true;
+    onProgress?.call('RAG', 1.0, 'Memory database ready');
+    debugPrint('RAG initialized with dedicated embedding model');
   }
 
-  /// Lazy load vision model only when needed (for photo analysis)
+  /// Generate embedding using dedicated embedding model
+  Future<List<double>> generateEmbedding(String text) async {
+    if (!_embeddingInitialized || _embeddingLM == null) {
+      throw StateError('Embedding model not initialized');
+    }
+    final result = await _embeddingLM!.generateEmbedding(text: text);
+    return result.embeddings;
+  }
+
+  /// Generate completion using primary model
+  Future<CactusCompletionResult> generateCompletion({
+    required List<ChatMessage> messages,
+    CactusCompletionParams? params,
+  }) async {
+    if (!_primaryInitialized || _primaryLM == null) {
+      throw StateError('Primary LM not initialized');
+    }
+    return await _primaryLM!.generateCompletion(
+      messages: messages,
+      params: params,
+    );
+  }
+
+  /// Generate streaming completion using primary model
+  Future<CactusStreamedCompletionResult> generateCompletionStream({
+    required List<ChatMessage> messages,
+    CactusCompletionParams? params,
+  }) async {
+    if (!_primaryInitialized || _primaryLM == null) {
+      throw StateError('Primary LM not initialized');
+    }
+    return await _primaryLM!.generateCompletionStream(
+      messages: messages,
+      params: params,
+    );
+  }
+
+  /// Lazy load vision model for photo analysis
+  /// This unloads the primary model temporarily to save memory
   Future<CactusLM> getVisionLM() async {
     if (_visionInitialized && _visionLM != null) {
       return _visionLM!;
     }
 
-    // Unload main LM to free memory before loading vision
-    try {
-      lm.unload();
-    } catch (e) {
-      // Ignore unload errors
+    // Unload primary LM to free memory
+    if (_primaryLM != null && _primaryInitialized) {
+      try {
+        _primaryLM!.unload();
+        debugPrint('Primary LM unloaded for vision');
+      } catch (e) {
+        debugPrint('Error unloading primary LM: $e');
+      }
+      _primaryInitialized = false;
     }
 
-    // Longer delay to ensure iOS releases file handles and memory
     await Future.delayed(const Duration(milliseconds: 500));
 
     _visionLM = CactusLM();
@@ -83,62 +230,58 @@ class CactusService {
       },
     );
 
-    // Don't specify contextSize - let SDK use vision model's default
     await _visionLM!.initializeModel(
-      params: CactusInitParams(
-        model: AppConstants.visionModel,
-      ),
+      params: CactusInitParams(model: AppConstants.visionModel),
     );
 
     _visionInitialized = true;
+    _activeModel = AppConstants.visionModel;
+    debugPrint('Vision LM initialized: ${AppConstants.visionModel}');
+
     return _visionLM!;
   }
 
-  /// Switch back to main LM after using vision
-  Future<void> restoreMainLM() async {
+  /// Restore primary model after vision use
+  Future<void> restorePrimaryLM() async {
     if (_visionLM != null && _visionInitialized) {
       try {
         _visionLM!.unload();
+        debugPrint('Vision LM unloaded');
       } catch (e) {
-        // Ignore unload errors
+        debugPrint('Error unloading vision LM: $e');
       }
       _visionInitialized = false;
       _visionLM = null;
     }
 
-    // Longer delay to ensure iOS releases file handles and memory
     await Future.delayed(const Duration(milliseconds: 500));
 
-    // Create fresh LM instance to avoid stale state
-    lm = CactusLM(enableToolFiltering: true);
+    // Reinitialize primary LM
+    _primaryLM = CactusLM(enableToolFiltering: true);
 
-    // Re-initialize main LM with retry
     int retries = 0;
     while (retries < 3) {
       try {
-        await lm.initializeModel(
+        await _primaryLM!.initializeModel(
           params: CactusInitParams(
-            model: AppConstants.mainModel,
-            contextSize: AppConstants.defaultContextSize,
+            model: AppConstants.primaryModel,
+            contextSize: AppConstants.contextSize,
           ),
         );
-        break; // Success
+        _primaryInitialized = true;
+        _activeModel = AppConstants.primaryModel;
+        debugPrint('Primary LM restored');
+        break;
       } catch (e) {
         retries++;
         if (retries >= 3) rethrow;
         await Future.delayed(Duration(milliseconds: 500 * retries));
-        lm = CactusLM(enableToolFiltering: true);
+        _primaryLM = CactusLM(enableToolFiltering: true);
       }
     }
-
-    // Re-connect RAG embedding generator to new LM instance
-    rag.setEmbeddingGenerator((text) async {
-      final result = await lm.generateEmbedding(text: text);
-      return result.embeddings;
-    });
   }
 
-  /// Lazy load STT model only when needed (for voice transcription)
+  /// Lazy load STT model for voice transcription
   Future<CactusSTT> getSTT() async {
     if (_sttInitialized && _stt != null) {
       return _stt!;
@@ -160,64 +303,82 @@ class CactusService {
     );
 
     _sttInitialized = true;
+    debugPrint('STT initialized: ${AppConstants.sttModel}');
+
     return _stt!;
   }
 
   /// Unload STT to free memory
   void unloadSTT() {
     if (_stt != null && _sttInitialized) {
-      _stt!.unload();
+      try {
+        _stt!.unload();
+        debugPrint('STT unloaded');
+      } catch (e) {
+        debugPrint('Error unloading STT: $e');
+      }
       _sttInitialized = false;
       _stt = null;
     }
   }
 
-  Future<void> _downloadModel(CactusLM model, String modelName) async {
-    await model.downloadModel(
-      model: modelName,
-      downloadProcessCallback: (progress, status, isError) {
-        if (!isError) {
-          onProgress?.call(modelName, progress ?? 0, status);
-        }
-      },
-    );
-  }
-
-  /// Reinitialize main LM if context fails
-  Future<void> reinitializeMainLM() async {
-    try {
-      lm.unload();
-    } catch (e) {
-      // Ignore unload errors
+  /// Reinitialize primary LM if context fails
+  Future<void> reinitializePrimaryLM() async {
+    if (_primaryLM != null) {
+      try {
+        _primaryLM!.unload();
+      } catch (e) {
+        debugPrint('Error unloading primary LM: $e');
+      }
     }
 
     await Future.delayed(const Duration(milliseconds: 300));
 
-    lm = CactusLM(enableToolFiltering: true);
-    await lm.initializeModel(
+    _primaryLM = CactusLM(enableToolFiltering: true);
+    await _primaryLM!.initializeModel(
       params: CactusInitParams(
-        model: AppConstants.mainModel,
-        contextSize: AppConstants.defaultContextSize,
+        model: AppConstants.primaryModel,
+        contextSize: AppConstants.contextSize,
       ),
     );
-
-    // Re-connect RAG embedding generator
-    rag.setEmbeddingGenerator((text) async {
-      final result = await lm.generateEmbedding(text: text);
-      return result.embeddings;
-    });
+    _primaryInitialized = true;
+    _activeModel = AppConstants.primaryModel;
+    debugPrint('Primary LM reinitialized');
   }
 
+  @override
   void dispose() {
-    if (_initialized) {
-      lm.unload();
-      rag.close();
+    if (_primaryLM != null) {
+      try {
+        _primaryLM!.unload();
+      } catch (e) {
+        debugPrint('Error unloading primary LM: $e');
+      }
+    }
+    if (_embeddingLM != null) {
+      try {
+        _embeddingLM!.unload();
+      } catch (e) {
+        debugPrint('Error unloading embedding LM: $e');
+      }
     }
     if (_visionLM != null) {
-      _visionLM!.unload();
+      try {
+        _visionLM!.unload();
+      } catch (e) {
+        debugPrint('Error unloading vision LM: $e');
+      }
     }
     if (_stt != null) {
-      _stt!.unload();
+      try {
+        _stt!.unload();
+      } catch (e) {
+        debugPrint('Error unloading STT: $e');
+      }
     }
+    if (_rag != null) {
+      _rag!.close();
+    }
+    super.dispose();
   }
 }

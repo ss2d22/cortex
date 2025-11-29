@@ -514,16 +514,6 @@ class _MemoryDashboardState extends State<MemoryDashboard>
   }
 
   MemoryStatistics _getStats() {
-    final facts = widget.ctrl.getFacts();
-    return MemoryStatistics(
-      episodicCount: 0,
-      semanticFactCount: facts.length,
-      proceduralCount: 0,
-      workingMemoryLoad: 0.3,
-      averageFactConfidence: facts.isEmpty
-          ? 0.0
-          : facts.map((f) => f.confidence).reduce((a, b) => a + b) / facts.length,
-      averageProceduralConfidence: 0.0,
-    );
+    return widget.ctrl.getMemoryStats();
   }
 }

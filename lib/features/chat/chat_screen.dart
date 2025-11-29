@@ -3,9 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
+import 'package:record/record.dart';
 import '../../core/services/cactus_service.dart';
 import '../../shared/theme.dart';
+import '../../shared/constants.dart';
 import '../memory/memory_dashboard.dart';
 import 'chat_controller.dart';
 import 'widgets/message_bubble.dart';
@@ -23,6 +26,10 @@ class _ChatScreenState extends State<ChatScreen> {
   final _text = TextEditingController();
   final _scroll = ScrollController();
   final _picker = ImagePicker();
+  final _recorder = AudioRecorder();
+
+  bool _isRecording = false;
+  String? _recordingPath;
 
   @override
   void initState() {
@@ -49,6 +56,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _ctrl.removeListener(_update);
     _text.dispose();
     _scroll.dispose();
+    _recorder.dispose();
     super.dispose();
   }
 
@@ -58,16 +66,21 @@ class _ChatScreenState extends State<ChatScreen> {
       backgroundColor: AppTheme.backgroundColor,
       appBar: AppBar(
         backgroundColor: AppTheme.surfaceColor,
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.psychology, color: AppTheme.primaryColor),
-            SizedBox(width: 8),
-            Text('Cortex'),
+            const Icon(Icons.psychology, color: AppTheme.primaryColor),
+            const SizedBox(width: 8),
+            const Text('Cortex'),
+            if (_ctrl.isReady) ...[
+              const Spacer(),
+              _buildMemoryIndicator(),
+            ],
           ],
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.memory),
+            tooltip: 'Memory Explorer',
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => MemoryDashboard(ctrl: _ctrl)),
@@ -76,20 +89,55 @@ class _ChatScreenState extends State<ChatScreen> {
           PopupMenuButton<String>(
             onSelected: (v) async {
               if (v == 'clear_chat') _ctrl.clearChat();
-              if (v == 'clear_all') await _ctrl.clearAll();
+              if (v == 'clear_all') {
+                final confirm = await _showConfirmDialog(
+                  'Clear All Memory',
+                  'This will delete all memories and facts. This cannot be undone.',
+                );
+                if (confirm == true) await _ctrl.clearAll();
+              }
             },
             itemBuilder: (_) => [
               const PopupMenuItem(value: 'clear_chat', child: Text('Clear chat')),
-              const PopupMenuItem(value: 'clear_all', child: Text('Clear all memory')),
+              const PopupMenuItem(
+                value: 'clear_all',
+                child: Text('Clear all memory', style: TextStyle(color: Colors.red)),
+              ),
             ],
           ),
         ],
       ),
       body: Column(
         children: [
+          // Recording indicator
+          if (_isRecording)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+              color: Colors.red.withAlpha(50),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Recording... Tap mic to stop',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ],
+              ),
+            ),
+
+          // Messages
           Expanded(
             child: _ctrl.messages.isEmpty
-                ? _empty()
+                ? _buildEmptyState()
                 : ListView.builder(
                     controller: _scroll,
                     padding: const EdgeInsets.all(16),
@@ -97,51 +145,104 @@ class _ChatScreenState extends State<ChatScreen> {
                     itemBuilder: (_, i) => MessageBubble(message: _ctrl.messages[i]),
                   ),
           ),
+
+          // Input bar
           InputBar(
             controller: _text,
             isGenerating: _ctrl.isGenerating,
+            isRecording: _isRecording,
             onSend: _send,
             onPhoto: _showImageSourceDialog,
-            onVoice: _voice,
+            onVoice: _toggleRecording,
           ),
         ],
       ),
     );
   }
 
-  Widget _empty() => Center(
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [AppTheme.primaryColor, AppTheme.secondaryColor],
+  Widget _buildMemoryIndicator() {
+    final stats = _ctrl.getMemoryStats();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppTheme.primaryColor.withAlpha(50),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.memory, size: 14, color: AppTheme.primaryColor),
+          const SizedBox(width: 4),
+          Text(
+            '${stats.totalMemories}',
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppTheme.primaryColor,
+              fontWeight: FontWeight.bold,
             ),
-            borderRadius: BorderRadius.circular(20),
           ),
-          child: const Icon(Icons.psychology, size: 40, color: Colors.white),
-        ),
-        const SizedBox(height: 24),
-        const Text(
-          'Hello! I\'m Cortex',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'I remember everything you tell me.',
-          style: TextStyle(color: Colors.white70),
-        ),
-        const SizedBox(height: 16),
-        const Text(
-          'Try: "My name is [Name] and I work at [Company]"',
-          style: TextStyle(color: Colors.white54, fontSize: 12),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppTheme.primaryColor, AppTheme.secondaryColor],
+              ),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Icon(Icons.psychology, size: 40, color: Colors.white),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            'Hello! I\'m Cortex',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'I remember everything you tell me.',
+            style: TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.all(16),
+            margin: const EdgeInsets.symmetric(horizontal: 32),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceColor,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Column(
+              children: [
+                Text(
+                  'Try saying:',
+                  style: TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  '"My name is [Name] and I work at [Company]"',
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   void _send() {
     if (_text.text.trim().isEmpty) return;
@@ -160,9 +261,23 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.white24,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
             ListTile(
               leading: const Icon(Icons.photo_library, color: AppTheme.primaryColor),
-              title: const Text('Gallery', style: TextStyle(color: Colors.white)),
+              title: const Text('Choose from Gallery', style: TextStyle(color: Colors.white)),
+              subtitle: const Text(
+                'Select an existing photo',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _pickImage(ImageSource.gallery);
@@ -170,12 +285,17 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             ListTile(
               leading: const Icon(Icons.camera_alt, color: AppTheme.primaryColor),
-              title: const Text('Camera', style: TextStyle(color: Colors.white)),
+              title: const Text('Take Photo', style: TextStyle(color: Colors.white)),
+              subtitle: const Text(
+                'Capture with camera',
+                style: TextStyle(color: Colors.white54, fontSize: 12),
+              ),
               onTap: () {
                 Navigator.pop(context);
                 _pickImage(ImageSource.camera);
               },
             ),
+            const SizedBox(height: 16),
           ],
         ),
       ),
@@ -184,26 +304,22 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
-      // IMPORTANT: Constrain image size to prevent memory issues
       final img = await _picker.pickImage(
         source: source,
-        maxWidth: 512,
-        maxHeight: 512,
-        imageQuality: 85,
+        maxWidth: AppConstants.imageMaxDimension.toDouble(),
+        maxHeight: AppConstants.imageMaxDimension.toDouble(),
+        imageQuality: AppConstants.imageQuality,
       );
       if (img != null) {
-        // Copy to permanent location (temp files can be cleaned up)
         final appDir = await getApplicationDocumentsDirectory();
         final fileName = 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
         final savedPath = p.join(appDir.path, 'images', fileName);
 
-        // Create images directory if needed
         final imageDir = Directory(p.dirname(savedPath));
         if (!await imageDir.exists()) {
           await imageDir.create(recursive: true);
         }
 
-        // Copy the image file
         await File(img.path).copy(savedPath);
         _ctrl.processPhoto(savedPath);
       }
@@ -216,9 +332,114 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _voice() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Voice memo: coming soon!')),
+  Future<void> _toggleRecording() async {
+    if (_isRecording) {
+      await _stopRecording();
+    } else {
+      await _startRecording();
+    }
+  }
+
+  Future<void> _startRecording() async {
+    try {
+      // Check permission
+      final status = await Permission.microphone.request();
+      if (!status.isGranted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Microphone permission required')),
+          );
+        }
+        return;
+      }
+
+      // Check if can record
+      if (!await _recorder.hasPermission()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Cannot access microphone')),
+          );
+        }
+        return;
+      }
+
+      // Create path for recording
+      final appDir = await getApplicationDocumentsDirectory();
+      final fileName = 'voice_${DateTime.now().millisecondsSinceEpoch}.wav';
+      _recordingPath = p.join(appDir.path, 'audio', fileName);
+
+      // Ensure directory exists
+      final audioDir = Directory(p.dirname(_recordingPath!));
+      if (!await audioDir.exists()) {
+        await audioDir.create(recursive: true);
+      }
+
+      // Start recording
+      await _recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.wav,
+          sampleRate: 16000,
+          numChannels: 1,
+        ),
+        path: _recordingPath!,
+      );
+
+      setState(() {
+        _isRecording = true;
+      });
+    } catch (e) {
+      debugPrint('Error starting recording: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error starting recording: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    try {
+      final path = await _recorder.stop();
+
+      setState(() {
+        _isRecording = false;
+      });
+
+      if (path != null && path.isNotEmpty) {
+        _ctrl.processVoice(path);
+      }
+    } catch (e) {
+      debugPrint('Error stopping recording: $e');
+      setState(() {
+        _isRecording = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error stopping recording: $e')),
+        );
+      }
+    }
+  }
+
+  Future<bool?> _showConfirmDialog(String title, String message) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surfaceColor,
+        title: Text(title, style: const TextStyle(color: Colors.white)),
+        content: Text(message, style: const TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
     );
   }
 }

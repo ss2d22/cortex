@@ -17,22 +17,27 @@ class _ProceduralRulesViewState extends State<ProceduralRulesView> {
 
   @override
   Widget build(BuildContext context) {
-    // Procedural rules would come from MemoryManager
-    // For now, show the empty state with explanation
+    final allProcedures = widget.ctrl.memoryManager.procedures;
+    final procedures = _selectedType == null
+        ? allProcedures
+        : allProcedures.where((p) => p.type == _selectedType).toList();
 
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        _buildHeader(),
+        _buildHeader(allProcedures.length),
         const SizedBox(height: 20),
         _buildTypeFilter(),
         const SizedBox(height: 20),
-        _buildEmptyState(),
+        if (procedures.isEmpty)
+          _buildEmptyState()
+        else
+          ...procedures.map((p) => _buildProcedureCard(p)),
       ],
     );
   }
 
-  Widget _buildHeader() {
+  Widget _buildHeader(int count) {
     return Row(
       children: [
         Container(
@@ -59,7 +64,7 @@ class _ProceduralRulesViewState extends State<ProceduralRulesView> {
                 ),
               ),
               Text(
-                'Learned patterns and preferences',
+                '$count patterns learned',
                 style: AppTheme.bodySmall,
               ),
             ],
@@ -126,6 +131,150 @@ class _ProceduralRulesViewState extends State<ProceduralRulesView> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildProcedureCard(ProceduralMemory proc) {
+    final icons = {
+      ProceduralType.preference: Icons.favorite,
+      ProceduralType.habit: Icons.repeat,
+      ProceduralType.pattern: Icons.pattern,
+      ProceduralType.rule: Icons.rule,
+      ProceduralType.skill: Icons.lightbulb,
+    };
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppTheme.proceduralColor.withAlpha(40),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.proceduralColor.withAlpha(30),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  icons[proc.type] ?? Icons.psychology,
+                  size: 18,
+                  color: AppTheme.proceduralColor,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      proc.type.name.toUpperCase(),
+                      style: AppTheme.labelStyle.copyWith(
+                        color: AppTheme.proceduralColor,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    Text(
+                      proc.description,
+                      style: AppTheme.bodyMedium.copyWith(
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          // Action
+          if (proc.action.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceLight,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.arrow_forward,
+                    size: 14,
+                    color: AppTheme.textMuted,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      proc.action,
+                      style: AppTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          // Confidence and reinforcement info
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Text(
+                'Confidence: ',
+                style: AppTheme.labelStyle,
+              ),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(2),
+                  child: LinearProgressIndicator(
+                    value: proc.currentConfidence,
+                    backgroundColor: Colors.white.withAlpha(10),
+                    valueColor: AlwaysStoppedAnimation(
+                      _getConfidenceColor(proc.currentConfidence),
+                    ),
+                    minHeight: 4,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${(proc.currentConfidence * 100).toInt()}%',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: _getConfidenceColor(proc.currentConfidence),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              if (proc.successCount > 0) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withAlpha(30),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '+${proc.successCount}',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -232,5 +381,11 @@ class _ProceduralRulesViewState extends State<ProceduralRulesView> {
         ),
       ],
     );
+  }
+
+  Color _getConfidenceColor(double confidence) {
+    if (confidence > 0.7) return AppTheme.strengthHigh;
+    if (confidence > 0.4) return AppTheme.strengthMedium;
+    return AppTheme.strengthLow;
   }
 }

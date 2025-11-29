@@ -87,10 +87,10 @@ class AppTheme {
   static BoxDecoration get cardDecoration => BoxDecoration(
     color: cardColor,
     borderRadius: BorderRadius.circular(16),
-    border: Border.all(color: Colors.white.withOpacity(0.05)),
+    border: Border.all(color: Colors.white.withAlpha(13)),
     boxShadow: [
       BoxShadow(
-        color: Colors.black.withOpacity(0.2),
+        color: Colors.black.withAlpha(51),
         blurRadius: 10,
         offset: const Offset(0, 4),
       ),
@@ -98,10 +98,10 @@ class AppTheme {
   );
 
   static BoxDecoration glassDecoration({Color? borderColor}) => BoxDecoration(
-    color: surfaceColor.withOpacity(0.8),
+    color: surfaceColor.withAlpha(204),
     borderRadius: BorderRadius.circular(16),
     border: Border.all(
-      color: borderColor ?? Colors.white.withOpacity(0.1),
+      color: borderColor ?? Colors.white.withAlpha(26),
       width: 1,
     ),
   );
@@ -183,7 +183,6 @@ class AppTheme {
     colorScheme: ColorScheme.fromSeed(
       seedColor: primaryColor,
       brightness: Brightness.dark,
-      background: backgroundColor,
       surface: surfaceColor,
     ),
     scaffoldBackgroundColor: backgroundColor,
@@ -214,7 +213,7 @@ class AppTheme {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       hintStyle: bodyMedium.copyWith(color: textMuted),
     ),
-    dividerColor: Colors.white.withOpacity(0.1),
+    dividerColor: Colors.white.withAlpha(26),
     iconTheme: const IconThemeData(color: textSecondary),
   );
 }

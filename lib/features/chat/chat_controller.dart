@@ -7,23 +7,31 @@ import '../../core/services/persistence_service.dart';
 import '../../core/tools/tool_handler.dart';
 import '../../core/models/chat_message.dart';
 import '../../core/models/semantic_fact.dart';
+import '../../shared/constants.dart';
 
+/// Manages chat interactions with memory-augmented generation
 class ChatController extends ChangeNotifier {
   final CactusService _cactus;
   late MemoryManager _memory;
   late ToolHandler _tools;
   final _uuid = const Uuid();
 
+  // Message history for current session
   final List<ChatMessageModel> _messages = [];
   List<ChatMessageModel> get messages => List.unmodifiable(_messages);
+
+  // Conversation history for LLM context
+  final List<ChatMessage> _conversationHistory = [];
 
   bool _generating = false;
   bool get isGenerating => _generating;
 
   bool _ready = false;
+  bool get isReady => _ready;
 
   ChatController(this._cactus);
 
+  /// Initialize the chat controller
   Future<void> initialize() async {
     if (_ready) return;
     _memory = MemoryManager(_cactus, PersistenceService());
@@ -33,208 +41,267 @@ class ChatController extends ChangeNotifier {
     debugPrint('ChatController initialized');
   }
 
+  /// Send a message and generate a response
   Future<void> sendMessage(String text) async {
     if (_generating || text.trim().isEmpty || !_ready) return;
 
-    // Add user message
-    _messages.add(ChatMessageModel(id: _uuid.v4(), content: text, isUser: true));
+    // Add user message to UI
+    _messages.add(ChatMessageModel(
+      id: _uuid.v4(),
+      content: text,
+      isUser: true,
+    ));
 
     // Add assistant placeholder
-    final aId = _uuid.v4();
-    _messages.add(ChatMessageModel(id: aId, content: '', isUser: false, isLoading: true));
+    final assistantId = _uuid.v4();
+    _messages.add(ChatMessageModel(
+      id: assistantId,
+      content: '',
+      isUser: false,
+      isLoading: true,
+    ));
 
     _generating = true;
     notifyListeners();
 
     String response = '';
+    int usedMemories = 0;
 
     try {
+      // Build memory-augmented context
       final context = await _memory.buildContext(text);
-      final systemPrompt = '''You are Cortex, a caring and empathetic AI companion. You automatically remember everything - never ask the user to "remember" or "use" any commands.
+      usedMemories = _memory.workingMemory.activeSlots.length;
 
-$context
+      final systemPrompt = _buildSystemPrompt(context);
 
-CRITICAL RULES:
-- NEVER mention tools, functions, or ask user to say "remember" - memory is AUTOMATIC
-- Be warm, empathetic, and genuinely supportive
-- Reference specific details from what you know about the user
-- If the user shares something difficult, acknowledge their feelings FIRST before advice
-- Keep responses short (2-3 sentences max)
-- Never give generic advice - always personalize based on their context''';
-
+      // Build messages for LLM
       final msgs = <ChatMessage>[
         ChatMessage(content: systemPrompt, role: 'system'),
-        ..._memory.getHistory().take(6),
+        ..._conversationHistory.take(AppConstants.maxHistoryTurns * 2),
         ChatMessage(content: text, role: 'user'),
       ];
 
-      debugPrint('Sending message with ${msgs.length} messages');
+      debugPrint('Sending message with ${msgs.length} messages, context length: ${context.length}');
 
-      final stream = await _cactus.lm.generateCompletionStream(
+      // Generate streaming response
+      final stream = await _cactus.generateCompletionStream(
         messages: msgs,
         params: CactusCompletionParams(
-          // No tools - we use regex extraction instead (small models can't handle tools properly)
-          maxTokens: 300,
+          maxTokens: AppConstants.maxResponseTokens,
+          // Tools defined but handled post-generation
+          tools: _getMemoryTools(),
         ),
       );
 
       await for (final chunk in stream.stream) {
         response += chunk;
-        _updateMsg(aId, response, loading: true);
+        _updateMessage(assistantId, response, loading: true);
       }
 
-      // Try to get the result, but handle JSON parsing errors gracefully
+      // Get final result
       CactusCompletionResult? result;
       try {
         result = await stream.result;
         debugPrint('Response complete. Success: ${result.success}, Tool calls: ${result.toolCalls.length}');
-      } catch (parseError) {
-        // JSON parsing error from malformed tool calls - use streamed response
-        debugPrint('Result parsing error (using streamed response): $parseError');
-        result = null;
+      } catch (e) {
+        debugPrint('Result parsing error (using streamed response): $e');
       }
 
-      // Check if generation was successful (if we got a result)
-      if (result != null && !result.success) {
-        debugPrint('Generation failed');
-        // If we have streamed content, use it anyway
-        if (response.isNotEmpty) {
-          response = _cleanResponse(response);
-          if (response.isNotEmpty && response.length >= 3) {
-            _updateMsg(aId, response, loading: false);
-            await _memory.storeConversation(text, response);
-            return;
-          }
-        }
-        _updateMsg(aId, "Sorry, I couldn't generate a response. Please try again.", loading: false);
-        return;
-      }
-
-      // Handle tool calls silently (don't append to response)
-      if (result != null) {
+      // Handle tool calls silently
+      if (result != null && result.toolCalls.isNotEmpty) {
         for (final tc in result.toolCalls) {
           debugPrint('Executing tool: ${tc.name} with args: ${tc.arguments}');
           final toolResult = await _tools.handle(tc);
           debugPrint('Tool result: $toolResult');
-          // Tools work silently - facts are stored, memories recalled for context
         }
 
-        // Use result.response if streaming didn't capture content
+        // Use result.response if streaming missed content
         if (response.isEmpty && result.response.isNotEmpty) {
           response = result.response;
         }
       }
 
-      // Clean up response (remove thinking tags, malformed tool calls, etc.)
+      // Clean response
       response = _cleanResponse(response);
 
-      // Make sure we have a valid response
+      // Fallback if empty
       if (response.isEmpty || response.length < 3) {
         response = "I'm here to help! What would you like to talk about?";
       }
 
-      _updateMsg(aId, response, loading: false);
+      _updateMessage(assistantId, response, loading: false, usedMemories: usedMemories);
 
-      // Store conversation in memory
+      // Update conversation history
+      _conversationHistory.add(ChatMessage(content: text, role: 'user'));
+      _conversationHistory.add(ChatMessage(content: response, role: 'assistant'));
+
+      // Trim history if too long
+      while (_conversationHistory.length > AppConstants.maxHistoryTurns * 2) {
+        _conversationHistory.removeAt(0);
+      }
+
+      // Store in episodic memory
       await _memory.storeConversation(text, response);
       debugPrint('Conversation stored in memory');
 
     } catch (e) {
       debugPrint('Error in sendMessage: $e');
-      final errorStr = e.toString();
-
-      // Handle context initialization failures - try to reinitialize
-      if (errorStr.contains('context') || errorStr.contains('initialize')) {
-        debugPrint('Context error detected, attempting reinitialize...');
-        try {
-          await _cactus.reinitializeMainLM();
-          _updateMsg(aId, "I had a brief hiccup. Please try your message again!", loading: false);
-        } catch (reinitError) {
-          debugPrint('Reinitialize failed: $reinitError');
-          _updateMsg(aId, "Something went wrong. Please restart the app.", loading: false);
-        }
-      } else {
-        // Don't show raw exception objects to user
-        final errorMsg = errorStr.contains('Instance of')
-            ? 'Something went wrong. Please try again.'
-            : 'Sorry, something went wrong. Please try again.';
-        _updateMsg(aId, errorMsg, loading: false);
-      }
+      await _handleError(assistantId, e);
     } finally {
       _generating = false;
       notifyListeners();
     }
   }
 
+  String _buildSystemPrompt(String context) {
+    return '''You are Cortex, a caring and empathetic AI companion with persistent memory. You automatically remember everything the user shares.
+
+$context
+
+PERSONALITY & BEHAVIOR:
+- Be warm, empathetic, and genuinely supportive
+- Reference specific details you know about the user naturally
+- If the user shares something difficult, acknowledge their feelings FIRST before offering advice
+- Keep responses concise (2-3 sentences unless asked for more)
+- Never give generic advice - always personalize based on their context
+- NEVER mention tools, functions, or memory commands - memory is automatic
+- If you don't know something about the user, don't make assumptions''';
+  }
+
+  List<CactusTool> _getMemoryTools() {
+    return [
+      CactusTool(
+        name: 'remember',
+        description: 'Store important information the user wants remembered',
+        parameters: ToolParametersSchema(
+          properties: {
+            'content': ToolParameter(
+              type: 'string',
+              description: 'What to remember',
+              required: true,
+            ),
+            'importance': ToolParameter(
+              type: 'string',
+              description: 'low, medium, high, or critical',
+              required: false,
+            ),
+          },
+        ),
+      ),
+      CactusTool(
+        name: 'recall',
+        description: 'Search memories for specific information',
+        parameters: ToolParametersSchema(
+          properties: {
+            'query': ToolParameter(
+              type: 'string',
+              description: 'What to search for',
+              required: true,
+            ),
+          },
+        ),
+      ),
+      CactusTool(
+        name: 'list_facts',
+        description: 'List all known facts about the user',
+        parameters: ToolParametersSchema(properties: {}),
+      ),
+    ];
+  }
+
   String _cleanResponse(String response) {
-    // Remove thinking tags, function calls, and clean up
     String cleaned = response
-        // Remove markdown code blocks first (```json, '''json, etc.)
+        // Remove code blocks
         .replaceAll(RegExp(r"```[a-z]*\n?", caseSensitive: false), '')
         .replaceAll(RegExp(r"'''[a-z]*\n?", caseSensitive: false), '')
         .replaceAll(RegExp(r'```'), '')
         .replaceAll(RegExp(r"'''"), '')
-        // Remove thinking tags (complete and incomplete)
+        // Remove thinking tags
         .replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '')
         .replaceAll(RegExp(r'<think>.*$', dotAll: true), '')
-        // Remove function_call patterns early (various formats the LLM outputs)
+        // Remove function call artifacts
         .replaceAll(RegExp(r'function_call\s*[:\(\{].*', caseSensitive: false, dotAll: true), '')
         .replaceAll(RegExp(r'function_call', caseSensitive: false), '')
-        // Remove name: and arguments: patterns (common in malformed tool calls)
         .replaceAll(RegExp(r'\bname\s*:\s*\w+', caseSensitive: false), '')
         .replaceAll(RegExp(r'\barguments\s*:\s*.*', caseSensitive: false), '')
-        // Remove any JSON-like structures (tool calls, function calls)
-        // Pattern: {"anything": ...} or {anything}
+        // Remove JSON structures
         .replaceAll(RegExp(r'\{[^{}]*"[^{}]*\}', dotAll: true), '')
-        // Pattern: {"key": "value", ...} spread across text
         .replaceAll(RegExp(r'\{"[a-zA-Z_]+":', dotAll: true), '')
-        // Standalone curly braces with content
         .replaceAll(RegExp(r'\{[^\}]{0,100}\}', dotAll: true), '')
-        // Orphaned opening braces at end of text
         .replaceAll(RegExp(r'\{[^\}]*$', dotAll: true), '')
-        // Remove quoted key-value patterns
         .replaceAll(RegExp(r'"name"\s*:\s*"[a-zA-Z_]+"', dotAll: true), '')
         .replaceAll(RegExp(r'"arguments"\s*:\s*[^\n]*', dotAll: true), '')
-        // Remove parenthesized JSON-like content
         .replaceAll(RegExp(r'\("[a-zA-Z_]+"\s*:\s*[^\)]*\)', dotAll: true), '')
         // Remove tool output artifacts
         .replaceAll(RegExp(r'^No facts stored yet\.\s*\n?', multiLine: true), '')
         .replaceAll(RegExp(r'^Remembered:.*\n?', multiLine: true), '')
         .replaceAll(RegExp(r'^Found:.*\n?', multiLine: true), '')
-        // Remove special tokens (various formats)
+        // Remove special tokens
         .replaceAll(RegExp(r'<\|[^|>]*\|>'), '')
         .replaceAll(RegExp(r'<\|im_end\|>'), '')
         .replaceAll(RegExp(r'</s>'), '')
         .replaceAll(RegExp(r'<\|endoftext\|>'), '')
-        // Remove orphaned punctuation from cleaned content
+        // Clean up whitespace
         .replaceAll(RegExp(r'^\s*[:\}\{\]\[]+\s*', multiLine: true), '')
         .replaceAll(RegExp(r'\s*[:\}\{\]\[]+\s*$', multiLine: true), '')
-        // Remove standalone single characters that are JSON artifacts
         .replaceAll(RegExp(r'^\s*[\{\}\[\]:,]+\s*$', multiLine: true), '')
-        // Clean up excessive whitespace
         .replaceAll(RegExp(r'\n{3,}'), '\n\n')
         .replaceAll(RegExp(r'^\s*\n', multiLine: true), '')
         .replaceAll(RegExp(r'\s{2,}'), ' ')
         .trim();
 
-    // If response is empty after cleaning, provide fallback
-    if (cleaned.isEmpty || cleaned.length < 3) {
-      return "I'm listening! How can I help you?";
-    }
-    return cleaned;
+    return cleaned.isEmpty || cleaned.length < 3
+        ? "I'm listening! How can I help you?"
+        : cleaned;
   }
 
-  void _updateMsg(String id, String content, {required bool loading}) {
+  void _updateMessage(
+    String id,
+    String content, {
+    required bool loading,
+    int usedMemories = 0,
+  }) {
     final i = _messages.indexWhere((m) => m.id == id);
     if (i != -1) {
       _messages[i] = _messages[i].copyWith(
         content: content.isEmpty ? '...' : content,
         isLoading: loading,
+        usedMemories: usedMemories,
       );
       notifyListeners();
     }
   }
 
+  Future<void> _handleError(String messageId, Object error) async {
+    final errorStr = error.toString();
+
+    if (errorStr.contains('context') || errorStr.contains('initialize')) {
+      debugPrint('Context error detected, attempting reinitialize...');
+      try {
+        await _cactus.reinitializePrimaryLM();
+        _updateMessage(
+          messageId,
+          "I had a brief hiccup. Please try your message again!",
+          loading: false,
+        );
+      } catch (reinitError) {
+        debugPrint('Reinitialize failed: $reinitError');
+        _updateMessage(
+          messageId,
+          "Something went wrong. Please restart the app.",
+          loading: false,
+        );
+      }
+    } else {
+      _updateMessage(
+        messageId,
+        'Sorry, something went wrong. Please try again.',
+        loading: false,
+      );
+    }
+  }
+
+  /// Process a photo for memory storage
   Future<void> processPhoto(String path) async {
     if (!_ready || _generating) return;
 
@@ -243,7 +310,6 @@ CRITICAL RULES:
     final userMsgId = _uuid.v4();
     final assistantMsgId = _uuid.v4();
 
-    // Add user message with image
     _messages.add(ChatMessageModel(
       id: userMsgId,
       content: 'Loading vision model...',
@@ -251,7 +317,6 @@ CRITICAL RULES:
       imageUrl: path,
     ));
 
-    // Add assistant placeholder
     _messages.add(ChatMessageModel(
       id: assistantMsgId,
       content: '',
@@ -262,29 +327,33 @@ CRITICAL RULES:
     notifyListeners();
 
     try {
-      // Update status
-      _updateUserMsg(userMsgId, 'Analyzing image...');
+      _updateUserMessage(userMsgId, 'Analyzing image...');
 
       final desc = await _memory.ingestPhoto(path);
 
-      // Update user message
-      _updateUserMsg(userMsgId, 'Photo');
-
-      // Update assistant response
-      _updateMsg(assistantMsgId, 'I see: $desc\n\nI\'ve saved this to memory.', loading: false);
+      _updateUserMessage(userMsgId, 'Photo');
+      _updateMessage(
+        assistantMsgId,
+        'I see: $desc\n\nI\'ve saved this to memory.',
+        loading: false,
+      );
 
       debugPrint('Photo processed and stored');
     } catch (e) {
       debugPrint('Error processing photo: $e');
-      _updateUserMsg(userMsgId, 'Photo (failed)');
-      _updateMsg(assistantMsgId, 'Sorry, I couldn\'t analyze the image: $e', loading: false);
+      _updateUserMessage(userMsgId, 'Photo (failed)');
+      _updateMessage(
+        assistantMsgId,
+        'Sorry, I couldn\'t analyze the image. Please try again.',
+        loading: false,
+      );
     } finally {
       _generating = false;
       notifyListeners();
     }
   }
 
-  void _updateUserMsg(String id, String content) {
+  void _updateUserMessage(String id, String content) {
     final i = _messages.indexWhere((m) => m.id == id);
     if (i != -1) {
       _messages[i] = _messages[i].copyWith(content: content);
@@ -292,20 +361,25 @@ CRITICAL RULES:
     }
   }
 
+  /// Process voice recording for transcription and memory
   Future<void> processVoice(String path) async {
     if (!_ready || _generating) return;
 
     _generating = true;
 
     final id = _uuid.v4();
-    _messages.add(ChatMessageModel(id: id, content: 'Loading speech model...', isUser: true));
+    _messages.add(ChatMessageModel(
+      id: id,
+      content: 'Loading speech model...',
+      isUser: true,
+    ));
     notifyListeners();
 
     try {
-      _updateUserMsg(id, 'Transcribing...');
+      _updateUserMessage(id, 'Transcribing...');
 
       final text = await _memory.ingestVoice(path);
-      _updateUserMsg(id, '"$text"');
+      _updateUserMessage(id, '"$text"');
 
       _generating = false;
       notifyListeners();
@@ -314,23 +388,30 @@ CRITICAL RULES:
       await sendMessage('Voice memo: "$text"');
     } catch (e) {
       debugPrint('Error processing voice: $e');
-      _updateUserMsg(id, 'Voice (failed): $e');
+      _updateUserMessage(id, 'Voice (failed)');
       _generating = false;
       notifyListeners();
     }
   }
 
+  /// Clear current chat session
   void clearChat() {
     _messages.clear();
+    _conversationHistory.clear();
     _memory.clearHistory();
     notifyListeners();
   }
 
+  /// Clear all memory and chat
   Future<void> clearAll() async {
     await _memory.clearAll();
     _messages.clear();
+    _conversationHistory.clear();
     notifyListeners();
   }
 
+  // Getters for memory data
   List<SemanticFact> getFacts() => _memory.getAllFacts();
+  MemoryStatistics getMemoryStats() => _memory.getStatistics();
+  MemoryManager get memoryManager => _memory;
 }

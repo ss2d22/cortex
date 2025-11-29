@@ -9,9 +9,8 @@ class CortexApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Provider(
+    return ChangeNotifierProvider(
       create: (_) => CactusService(),
-      dispose: (_, svc) => svc.dispose(),
       child: MaterialApp(
         title: 'Cortex',
         debugShowCheckedModeBanner: false,

@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
 import '../../core/services/cactus_service.dart';
 import '../../shared/theme.dart';
@@ -189,7 +192,20 @@ class _ChatScreenState extends State<ChatScreen> {
         imageQuality: 85,
       );
       if (img != null) {
-        _ctrl.processPhoto(img.path);
+        // Copy to permanent location (temp files can be cleaned up)
+        final appDir = await getApplicationDocumentsDirectory();
+        final fileName = 'photo_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final savedPath = p.join(appDir.path, 'images', fileName);
+
+        // Create images directory if needed
+        final imageDir = Directory(p.dirname(savedPath));
+        if (!await imageDir.exists()) {
+          await imageDir.create(recursive: true);
+        }
+
+        // Copy the image file
+        await File(img.path).copy(savedPath);
+        _ctrl.processPhoto(savedPath);
       }
     } catch (e) {
       if (mounted) {

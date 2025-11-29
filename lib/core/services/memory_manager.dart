@@ -175,30 +175,50 @@ class MemoryManager {
   }
 
   Future<String> ingestPhoto(String imagePath) async {
-    final visionLM = await _cactus.getVisionLM();
+    CactusLM? visionLM;
+    try {
+      debugPrint('Starting photo analysis for: $imagePath');
+      visionLM = await _cactus.getVisionLM();
+      debugPrint('Vision LM loaded, generating completion...');
 
-    final result = await visionLM.generateCompletion(
-      messages: [
-        ChatMessage(
-          content: 'Describe this image briefly. Note any personal details like names, locations, events.',
-          role: 'user',
-          images: [imagePath],
-        ),
-      ],
-      params: CactusCompletionParams(maxTokens: 150),
-    );
-
-    await _cactus.restoreMainLM();
-
-    if (result.success) {
-      await storeEpisodic(
-        content: 'Photo: ${result.response}',
-        source: MemorySource.photo,
-        importance: 0.6,
+      final result = await visionLM.generateCompletion(
+        messages: [
+          ChatMessage(
+            content: 'You are a helpful AI assistant that can analyze images.',
+            role: 'system',
+          ),
+          ChatMessage(
+            content: 'Describe this image briefly.',
+            role: 'user',
+            images: [imagePath],
+          ),
+        ],
+        params: CactusCompletionParams(maxTokens: 150),
       );
-      return result.response;
+
+      debugPrint('Vision result: success=${result.success}, response=${result.response}');
+
+      if (result.success && result.response.isNotEmpty) {
+        await storeEpisodic(
+          content: 'Photo: ${result.response}',
+          source: MemorySource.photo,
+          importance: 0.6,
+        );
+        return result.response;
+      }
+      throw Exception('Vision returned empty response');
+    } catch (e) {
+      debugPrint('Vision error: $e');
+      rethrow;
+    } finally {
+      // Always restore main LM
+      try {
+        await _cactus.restoreMainLM();
+        debugPrint('Main LM restored after vision');
+      } catch (e) {
+        debugPrint('Error restoring main LM: $e');
+      }
     }
-    throw Exception('Vision analysis failed');
   }
 
   //============================================

@@ -63,7 +63,14 @@ class CactusService {
     }
 
     // Unload main LM to free memory before loading vision
-    lm.unload();
+    try {
+      lm.unload();
+    } catch (e) {
+      // Ignore unload errors
+    }
+
+    // Small delay to ensure file handles are released
+    await Future.delayed(const Duration(milliseconds: 100));
 
     _visionLM = CactusLM();
 
@@ -79,7 +86,7 @@ class CactusService {
     await _visionLM!.initializeModel(
       params: CactusInitParams(
         model: AppConstants.visionModel,
-        contextSize: AppConstants.defaultContextSize,
+        contextSize: 1024, // Smaller context for vision
       ),
     );
 
@@ -90,10 +97,17 @@ class CactusService {
   /// Switch back to main LM after using vision
   Future<void> restoreMainLM() async {
     if (_visionLM != null && _visionInitialized) {
-      _visionLM!.unload();
+      try {
+        _visionLM!.unload();
+      } catch (e) {
+        // Ignore unload errors
+      }
       _visionInitialized = false;
       _visionLM = null;
     }
+
+    // Small delay to ensure file handles are released
+    await Future.delayed(const Duration(milliseconds: 100));
 
     // Re-initialize main LM
     await lm.initializeModel(

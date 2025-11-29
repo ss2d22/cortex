@@ -51,20 +51,11 @@ class ChatController extends ChangeNotifier {
 
     try {
       final context = await _memory.buildContext(text);
-      final systemPrompt = '''You are Cortex, a friendly AI assistant with persistent memory. You remember everything the user tells you.
+      final systemPrompt = '''You are Cortex, a friendly AI assistant with persistent memory.
 
 $context
 
-Available tools:
-- remember: Store important information (use when user says "remember", "don't forget", or shares personal info)
-- recall: Search memories for specific information
-- list_facts: List all known facts about the user
-
-Instructions:
-- Be conversational and friendly
-- Reference known facts naturally in conversation
-- When user shares personal info, acknowledge it and use the remember tool
-- Keep responses concise''';
+Be conversational, friendly, and keep responses concise.''';
 
       final msgs = <ChatMessage>[
         ChatMessage(content: systemPrompt, role: 'system'),
@@ -90,16 +81,15 @@ Instructions:
       final result = await stream.result;
       debugPrint('Response complete. Tool calls: ${result.toolCalls.length}');
 
-      // Handle tool calls
+      // Handle tool calls silently (don't append to response)
       for (final tc in result.toolCalls) {
-        debugPrint('Executing tool: ${tc.name}');
+        debugPrint('Executing tool: ${tc.name} with args: ${tc.arguments}');
         final toolResult = await _tools.handle(tc);
-        if (tc.name == 'recall' || tc.name == 'list_facts') {
-          response += '\n\n$toolResult';
-        }
+        debugPrint('Tool result: $toolResult');
+        // Tools work silently - facts are stored, memories recalled for context
       }
 
-      // Clean up response (remove thinking tags if present)
+      // Clean up response (remove thinking tags, malformed tool calls, etc.)
       response = _cleanResponse(response);
 
       _updateMsg(aId, response, loading: false);
@@ -118,13 +108,36 @@ Instructions:
   }
 
   String _cleanResponse(String response) {
-    // Remove thinking tags and clean up
+    // Remove thinking tags, function calls, and clean up
     String cleaned = response
+        // Remove thinking tags (complete and incomplete)
         .replaceAll(RegExp(r'<think>.*?</think>', dotAll: true), '')
-        .replaceAll(RegExp(r'<\|im_end\|>'), '')
+        .replaceAll(RegExp(r'<think>.*$', dotAll: true), '')
+        // Remove malformed function call artifacts with parentheses
+        // Pattern: (function_call": ("name": "list_facts", "arguments": 0}}
+        .replaceAll(RegExp(r'\(?\"?function_call\"?\s*:\s*\(?[^\n]*\"name\"[^\n]*[\)\}]+', dotAll: true), '')
+        // Pattern with curly braces
+        .replaceAll(RegExp(r'\{\"function_call\"[^\}]*\}+', dotAll: true), '')
+        // Standalone tool patterns
+        .replaceAll(RegExp(r'[\(\{]\s*\"?name\"?\s*:\s*\"[^\"]+\"[^\)\}\n]*[\)\}]?', dotAll: true), '')
+        // Remove "arguments" patterns
+        .replaceAll(RegExp(r',?\s*\"arguments\"\s*:\s*[^\)\}\n]+[\)\}]?', dotAll: true), '')
+        // Remove tool output artifacts (these shouldn't appear now but just in case)
+        .replaceAll(RegExp(r'^No facts stored yet\.\s*\n?', multiLine: true), '')
+        .replaceAll(RegExp(r'^Remembered:.*\n?', multiLine: true), '')
+        // Remove special tokens
+        .replaceAll(RegExp(r'<\|.*?\|>'), '')
         .replaceAll(RegExp(r'</s>'), '')
+        // Clean up excessive whitespace
+        .replaceAll(RegExp(r'\n{3,}'), '\n\n')
+        .replaceAll(RegExp(r'^\s*\n', multiLine: true), '')
         .trim();
-    return cleaned.isEmpty ? response : cleaned;
+
+    // If response is empty after cleaning, provide fallback
+    if (cleaned.isEmpty || cleaned.length < 2) {
+      return "I'm listening! How can I help you?";
+    }
+    return cleaned;
   }
 
   void _updateMsg(String id, String content, {required bool loading}) {

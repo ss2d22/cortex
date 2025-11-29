@@ -4,6 +4,8 @@ PODS:
   - device_info_plus (0.0.1):
     - Flutter
   - Flutter (1.0.0)
+  - flutter_recorder (0.0.1):
+    - Flutter
   - image_picker_ios (0.0.1):
     - Flutter
   - ObjectBox (5.0.0)
@@ -27,6 +29,7 @@ DEPENDENCIES:
   - cactus (from `.symlinks/plugins/cactus/ios`)
   - device_info_plus (from `.symlinks/plugins/device_info_plus/ios`)
   - Flutter (from `Flutter`)
+  - flutter_recorder (from `.symlinks/plugins/flutter_recorder/ios`)
   - image_picker_ios (from `.symlinks/plugins/image_picker_ios/ios`)
   - objectbox_flutter_libs (from `.symlinks/plugins/objectbox_flutter_libs/ios`)
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
@@ -46,6 +49,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/device_info_plus/ios"
   Flutter:
     :path: Flutter
+  flutter_recorder:
+    :path: ".symlinks/plugins/flutter_recorder/ios"
   image_picker_ios:
     :path: ".symlinks/plugins/image_picker_ios/ios"
   objectbox_flutter_libs:
@@ -65,6 +70,7 @@ SPEC CHECKSUMS:
   cactus: 8c7f4da7bf87fc172f05ef974065f2ca6c3e809c
   device_info_plus: 21fcca2080fbcd348be798aa36c3e5ed849eefbe
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  flutter_recorder: f976cf27301f5ba68959c7e87a3e4c8c1ccd4e8d
   image_picker_ios: e0ece4aa2a75771a7de3fa735d26d90817041326
   ObjectBox: a60820ec1c903702350585d8cc99c1268c99e688
   objectbox_flutter_libs: 9bfa6489919e9191d33d54dc25cec67ca416c13d

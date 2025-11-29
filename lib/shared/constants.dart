@@ -16,9 +16,8 @@ class AppConstants {
   static const String visionModel = 'lfm2-vl-450m';
 
   /// Speech-to-text model
-  /// Whisper Tiny: Most stable, lightweight, ~75 MB
-  /// Note: whisper-small has FFI issues on some devices
-  static const String sttModel = 'whisper-tiny';
+  /// Whisper Small: Default in Cactus SDK example, ~464 MB
+  static const String sttModel = 'whisper-small';
 
   // ===== CONTEXT SETTINGS =====
 

@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_recorder/flutter_recorder.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
-import 'package:record/record.dart';
 import '../../core/services/cactus_service.dart';
 import '../../shared/theme.dart';
 import '../../shared/constants.dart';
@@ -26,7 +26,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final _text = TextEditingController();
   final _scroll = ScrollController();
   final _picker = ImagePicker();
-  final _recorder = AudioRecorder();
+  bool _recorderInitialized = false;
 
   bool _isRecording = false;
   String? _recordingPath;
@@ -36,6 +36,23 @@ class _ChatScreenState extends State<ChatScreen> {
     super.initState();
     _ctrl = ChatController(context.read<CactusService>())..addListener(_update);
     _ctrl.initialize();
+    _initRecorder();
+  }
+
+  Future<void> _initRecorder() async {
+    // Initialize recorder with 16kHz mono 16-bit format for Whisper
+    Recorder.instance.init(
+      sampleRate: 16000,
+      channels: RecorderChannels.mono,
+      format: PCMFormat.s16le,
+    );
+    // Give native side time to initialize
+    await Future.delayed(const Duration(milliseconds: 100));
+    // Start the capture device (required before startRecording)
+    Recorder.instance.start();
+    await Future.delayed(const Duration(milliseconds: 100));
+    _recorderInitialized = true;
+    debugPrint('Recorder initialized and capture started');
   }
 
   void _update() {
@@ -56,7 +73,14 @@ class _ChatScreenState extends State<ChatScreen> {
     _ctrl.removeListener(_update);
     _text.dispose();
     _scroll.dispose();
-    _recorder.dispose();
+    // Stop capture if running
+    if (_recorderInitialized) {
+      try {
+        Recorder.instance.stop();
+      } catch (e) {
+        debugPrint('Error stopping recorder: $e');
+      }
+    }
     super.dispose();
   }
 
@@ -764,14 +788,19 @@ class _ChatScreenState extends State<ChatScreen> {
         return;
       }
 
-      // Double-check recorder has permission
-      if (!await _recorder.hasPermission()) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please grant microphone access')),
-          );
-        }
-        return;
+      // Wait for recorder to be initialized if not ready
+      if (!_recorderInitialized) {
+        debugPrint('Waiting for recorder initialization...');
+        // Re-init just in case it wasn't done
+        Recorder.instance.init(
+          sampleRate: 16000,
+          channels: RecorderChannels.mono,
+          format: PCMFormat.s16le,
+        );
+        await Future.delayed(const Duration(milliseconds: 100));
+        Recorder.instance.start();
+        await Future.delayed(const Duration(milliseconds: 100));
+        _recorderInitialized = true;
       }
 
       // Create path for recording
@@ -785,15 +814,9 @@ class _ChatScreenState extends State<ChatScreen> {
         await audioDir.create(recursive: true);
       }
 
-      // Start recording
-      await _recorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.wav,
-          sampleRate: 16000,
-          numChannels: 1,
-        ),
-        path: _recordingPath!,
-      );
+      debugPrint('Starting recording to: $_recordingPath');
+      // Start recording to WAV file
+      Recorder.instance.startRecording(completeFilePath: _recordingPath!);
 
       setState(() {
         _isRecording = true;
@@ -810,14 +833,17 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _stopRecording() async {
     try {
-      final path = await _recorder.stop();
+      Recorder.instance.stopRecording();
 
       setState(() {
         _isRecording = false;
       });
 
-      if (path != null && path.isNotEmpty) {
-        _ctrl.processVoice(path);
+      // Use the path we saved when starting recording
+      if (_recordingPath != null && _recordingPath!.isNotEmpty) {
+        // Small delay to ensure file is written
+        await Future.delayed(const Duration(milliseconds: 100));
+        _ctrl.processVoice(_recordingPath!);
       }
     } catch (e) {
       debugPrint('Error stopping recording: $e');

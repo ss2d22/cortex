@@ -330,10 +330,35 @@ class CactusService extends ChangeNotifier {
   }
 
   /// Lazy load STT model for voice transcription
+  /// This unloads other models to give Whisper maximum memory
   Future<CactusSTT> getSTT() async {
     if (_sttInitialized && _stt != null) {
       return _stt!;
     }
+
+    // Unload primary LM to free memory for STT
+    if (_primaryLM != null && _primaryInitialized) {
+      try {
+        _primaryLM!.unload();
+        debugPrint('Primary LM unloaded for STT');
+      } catch (e) {
+        debugPrint('Error unloading primary LM: $e');
+      }
+      _primaryInitialized = false;
+    }
+
+    // Also unload embedding LM to maximize memory for Whisper
+    if (_embeddingLM != null && _embeddingInitialized) {
+      try {
+        _embeddingLM!.unload();
+        debugPrint('Embedding LM unloaded for STT');
+      } catch (e) {
+        debugPrint('Error unloading embedding LM: $e');
+      }
+      _embeddingInitialized = false;
+    }
+
+    await Future.delayed(const Duration(milliseconds: 500));
 
     _stt = CactusSTT();
 
@@ -346,9 +371,8 @@ class CactusService extends ChangeNotifier {
       },
     );
 
-    await _stt!.initializeModel(
-      params: CactusInitParams(model: AppConstants.sttModel),
-    );
+    // Initialize with model param like the working example
+    await _stt!.initializeModel(params: CactusInitParams(model: AppConstants.sttModel));
 
     _sttInitialized = true;
     debugPrint('STT initialized: ${AppConstants.sttModel}');
@@ -356,8 +380,8 @@ class CactusService extends ChangeNotifier {
     return _stt!;
   }
 
-  /// Unload STT to free memory
-  void unloadSTT() {
+  /// Unload STT and restore all models
+  Future<void> unloadSTT() async {
     if (_stt != null && _sttInitialized) {
       try {
         _stt!.unload();
@@ -368,6 +392,32 @@ class CactusService extends ChangeNotifier {
       _sttInitialized = false;
       _stt = null;
     }
+
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    // Restore embedding LM for RAG
+    if (!_embeddingInitialized) {
+      try {
+        _embeddingLM = CactusLM();
+        await _embeddingLM!.initializeModel(
+          params: CactusInitParams(model: AppConstants.embeddingModel),
+        );
+        _embeddingInitialized = true;
+
+        // Reconnect RAG embedding generator
+        _rag?.setEmbeddingGenerator((text) async {
+          final result = await _embeddingLM!.generateEmbedding(text: text);
+          return result.embeddings;
+        });
+
+        debugPrint('Embedding LM restored after STT');
+      } catch (e) {
+        debugPrint('Error restoring embedding LM: $e');
+      }
+    }
+
+    // Restore primary LM after STT use
+    await restorePrimaryLM();
   }
 
   /// Reinitialize primary LM if context fails

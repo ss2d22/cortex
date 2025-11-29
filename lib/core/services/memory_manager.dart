@@ -305,22 +305,50 @@ class MemoryManager extends ChangeNotifier {
   Future<String> ingestVoice(String audioPath) async {
     final stt = await _cactus.getSTT();
 
-    final result = await stt.transcribe(
+    // Use exactly the same pattern as the working Cactus example
+    String streamedText = "";
+
+    final streamedResult = await stt.transcribeStream(
       audioFilePath: audioPath,
-      prompt: '<|startoftranscript|><|en|><|transcribe|><|notimestamps|>',
     );
 
-    _cactus.unloadSTT();
+    // Use listen() exactly like the example
+    streamedResult.stream.listen(
+      (token) {
+        streamedText += token;
+        debugPrint('STT token: $token');
+      },
+      onError: (error) {
+        debugPrint('STT stream error: $error');
+      },
+    );
+
+    // Wait for final result
+    final result = await streamedResult.result;
+
+    await _cactus.unloadSTT();
 
     if (result.success) {
+      final rawText = streamedText.isNotEmpty ? streamedText : result.text;
+      final text = _cleanWhisperOutput(rawText);
       await storeEpisodic(
-        content: 'Voice memo: ${result.text}',
+        content: 'Voice memo: $text',
         source: MemorySource.voice,
         importance: 0.7,
       );
-      return result.text;
+      return text;
     }
     throw Exception('Transcription failed: ${result.errorMessage}');
+  }
+
+  /// Clean Whisper special tokens from transcription output
+  String _cleanWhisperOutput(String text) {
+    // Remove Whisper special tokens
+    final cleaned = text
+        .replaceAll(RegExp(r'<\|[^|>]+\|>'), '') // Remove <|token|> patterns
+        .replaceAll(RegExp(r'\[.*?\]'), '') // Remove [BLANK_AUDIO] etc
+        .trim();
+    return cleaned;
   }
 
   /// Analyze and store photo

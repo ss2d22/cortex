@@ -545,28 +545,98 @@ WHAT TO AVOID:
 
     _generating = true;
 
-    final id = _uuid.v4();
+    final userMsgId = _uuid.v4();
     _addMessage(ChatMessageModel(
-      id: id,
-      content: 'Loading speech model...',
+      id: userMsgId,
+      content: 'Transcribing...',
       isUser: true,
     ));
     notifyListeners();
 
     try {
-      _updateUserMessage(id, 'Transcribing...');
-
       final text = await _memory.ingestVoice(path);
-      _updateUserMessage(id, '"$text"');
+      _updateUserMessage(userMsgId, '"$text"');
+
+      // Update title if this is the first message
+      if (_currentMessages.length == 1) {
+        _updateConversationTitle(text);
+      }
+
+      // Add assistant placeholder
+      final assistantId = _uuid.v4();
+      _addMessage(ChatMessageModel(
+        id: assistantId,
+        content: '',
+        isUser: false,
+        isLoading: true,
+      ));
+      notifyListeners();
+
+      // Generate response (same logic as sendMessage)
+      String response = '';
+      int usedMemories = 0;
+
+      final context = await _memory.buildContext(text);
+      usedMemories = _memory.workingMemory.activeSlots.length;
+
+      final systemPrompt = _buildSystemPrompt(context);
+
+      final msgs = <ChatMessage>[
+        ChatMessage(content: systemPrompt, role: 'system'),
+        ..._conversationHistory.take(AppConstants.maxHistoryTurns * 2),
+        ChatMessage(content: text, role: 'user'),
+      ];
+
+      final stream = await _cactus.generateCompletionStream(
+        messages: msgs,
+        params: CactusCompletionParams(
+          maxTokens: AppConstants.maxResponseTokens,
+          tools: _getMemoryTools(),
+        ),
+      );
+
+      await for (final chunk in stream.stream) {
+        response += chunk;
+        _updateMessage(assistantId, response, loading: true);
+      }
+
+      CactusCompletionResult? result;
+      try {
+        result = await stream.result;
+      } catch (e) {
+        debugPrint('Result parsing error: $e');
+      }
+
+      if (result != null && result.toolCalls.isNotEmpty) {
+        for (final tc in result.toolCalls) {
+          await _tools.handle(tc);
+        }
+        if (response.isEmpty && result.response.isNotEmpty) {
+          response = result.response;
+        }
+      }
+
+      response = _cleanResponse(response);
+
+      if (response.isEmpty || response.length < 3) {
+        response = "I heard you! How can I help?";
+      }
+
+      _updateMessage(assistantId, response, loading: false, usedMemories: usedMemories);
+
+      // Update conversation history
+      _conversationHistory.add(ChatMessage(content: text, role: 'user'));
+      _conversationHistory.add(ChatMessage(content: response, role: 'assistant'));
+
+      // Store in episodic memory
+      await _memory.storeConversation(text, response);
+      await _saveConversation();
 
       _generating = false;
       notifyListeners();
-
-      // Send transcribed text as a message
-      await sendMessage('Voice memo: "$text"');
     } catch (e) {
       debugPrint('Error processing voice: $e');
-      _updateUserMessage(id, 'Voice (failed)');
+      _updateUserMessage(userMsgId, 'Voice (failed)');
       _generating = false;
       notifyListeners();
     }

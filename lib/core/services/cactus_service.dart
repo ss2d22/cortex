@@ -59,7 +59,7 @@ class CactusService extends ChangeNotifier {
     return _rag!;
   }
 
-  /// Initialize the core services (Primary LLM + Embedding + RAG)
+  /// Initialize the core services (Primary LLM + Embedding + RAG + Pre-download optional models)
   Future<void> initialize() async {
     if (isReady) return;
 
@@ -73,10 +73,58 @@ class CactusService extends ChangeNotifier {
       // Step 3: Initialize RAG with embedding generator
       await _initializeRAG();
 
+      // Step 4: Pre-download STT model (but don't initialize - saves memory)
+      await _predownloadSTT();
+
+      // Step 5: Pre-download Vision model (but don't initialize - saves memory)
+      await _predownloadVision();
+
       debugPrint('CactusService fully initialized');
     } catch (e) {
       debugPrint('CactusService initialization failed: $e');
       rethrow;
+    }
+  }
+
+  Future<void> _predownloadSTT() async {
+    onProgress?.call('STT', 0, 'Downloading voice model...');
+    final tempStt = CactusSTT();
+
+    try {
+      await tempStt.downloadModel(
+        model: AppConstants.sttModel,
+        downloadProcessCallback: (progress, status, isError) {
+          if (!isError) {
+            onProgress?.call('STT', progress ?? 0, status);
+          }
+        },
+      );
+      onProgress?.call('STT', 1.0, 'Voice model ready');
+      debugPrint('STT model pre-downloaded: ${AppConstants.sttModel}');
+    } catch (e) {
+      debugPrint('STT pre-download error (non-fatal): $e');
+      onProgress?.call('STT', 1.0, 'Voice model skipped');
+    }
+  }
+
+  Future<void> _predownloadVision() async {
+    onProgress?.call('Vision', 0, 'Downloading vision model...');
+    final tempVision = CactusLM();
+
+    try {
+      await tempVision.downloadModel(
+        model: AppConstants.visionModel,
+        downloadProcessCallback: (progress, status, isError) {
+          if (!isError) {
+            onProgress?.call('Vision', progress ?? 0, status);
+          }
+        },
+      );
+      onProgress?.call('Vision', 1.0, 'Vision model ready');
+      debugPrint('Vision model pre-downloaded: ${AppConstants.visionModel}');
+    } catch (e) {
+      debugPrint('Vision pre-download error (non-fatal): $e');
+      onProgress?.call('Vision', 1.0, 'Vision model skipped');
     }
   }
 

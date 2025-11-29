@@ -14,11 +14,23 @@ class ChatController extends ChangeNotifier {
   final CactusService _cactus;
   late MemoryManager _memory;
   late ToolHandler _tools;
+  late PersistenceService _persistence;
   final _uuid = const Uuid();
 
+  // Multi-conversation support
+  final List<Conversation> _conversations = [];
+  List<Conversation> get conversations => List.unmodifiable(_conversations);
+
+  String? _currentConversationId;
+  String? get currentConversationId => _currentConversationId;
+
+  Conversation? get currentConversation =>
+      _currentConversationId == null
+          ? null
+          : _conversations.where((c) => c.id == _currentConversationId).firstOrNull;
+
   // Message history for current session
-  final List<ChatMessageModel> _messages = [];
-  List<ChatMessageModel> get messages => List.unmodifiable(_messages);
+  List<ChatMessageModel> get messages => currentConversation?.messages ?? [];
 
   // Conversation history for LLM context
   final List<ChatMessage> _conversationHistory = [];
@@ -34,27 +46,169 @@ class ChatController extends ChangeNotifier {
   /// Initialize the chat controller
   Future<void> initialize() async {
     if (_ready) return;
-    _memory = MemoryManager(_cactus, PersistenceService());
+    _persistence = PersistenceService();
+    _memory = MemoryManager(_cactus, _persistence);
     await _memory.initialize();
     _tools = ToolHandler(_memory);
+
+    // Load saved conversations
+    final savedConversations = await _persistence.loadConversations();
+    _conversations.addAll(savedConversations);
+
+    // Load last active conversation
+    final lastId = await _persistence.loadCurrentConversationId();
+    if (lastId != null && _conversations.any((c) => c.id == lastId)) {
+      _currentConversationId = lastId;
+      _rebuildConversationHistory();
+    }
+
     _ready = true;
-    debugPrint('ChatController initialized');
+    debugPrint('ChatController initialized with ${_conversations.length} conversations');
+  }
+
+  /// Create a new conversation
+  Future<void> createNewConversation() async {
+    final now = DateTime.now();
+    final conversation = Conversation(
+      id: _uuid.v4(),
+      title: 'New Chat',
+      createdAt: now,
+      updatedAt: now,
+      messages: [],
+    );
+
+    _conversations.insert(0, conversation);
+    _currentConversationId = conversation.id;
+    _conversationHistory.clear();
+
+    await _persistence.saveConversations(_conversations);
+    await _persistence.saveCurrentConversationId(conversation.id);
+
+    notifyListeners();
+  }
+
+  /// Switch to a different conversation
+  Future<void> switchToConversation(String id) async {
+    if (id == _currentConversationId) return;
+
+    final conv = _conversations.where((c) => c.id == id).firstOrNull;
+    if (conv == null) return;
+
+    _currentConversationId = id;
+    _rebuildConversationHistory();
+
+    await _persistence.saveCurrentConversationId(id);
+    notifyListeners();
+  }
+
+  /// Delete a conversation
+  Future<void> deleteConversation(String id) async {
+    _conversations.removeWhere((c) => c.id == id);
+
+    if (_currentConversationId == id) {
+      _currentConversationId = _conversations.isNotEmpty ? _conversations.first.id : null;
+      _rebuildConversationHistory();
+    }
+
+    await _persistence.saveConversations(_conversations);
+    await _persistence.saveCurrentConversationId(_currentConversationId);
+    notifyListeners();
+  }
+
+  /// Rebuild the LLM conversation history from the current conversation
+  void _rebuildConversationHistory() {
+    _conversationHistory.clear();
+    final conv = currentConversation;
+    if (conv == null) return;
+
+    for (final msg in conv.messages.take(AppConstants.maxHistoryTurns * 2)) {
+      _conversationHistory.add(ChatMessage(
+        content: msg.content,
+        role: msg.isUser ? 'user' : 'assistant',
+      ));
+    }
+  }
+
+  /// Update conversation title based on first message
+  void _updateConversationTitle(String firstMessage) {
+    if (currentConversation == null) return;
+
+    final title = firstMessage.length > 30
+        ? '${firstMessage.substring(0, 30)}...'
+        : firstMessage;
+
+    final idx = _conversations.indexWhere((c) => c.id == _currentConversationId);
+    if (idx != -1 && _conversations[idx].title == 'New Chat') {
+      _conversations[idx] = _conversations[idx].copyWith(title: title);
+    }
+  }
+
+  /// Get mutable messages list for current conversation
+  List<ChatMessageModel> get _currentMessages {
+    final conv = currentConversation;
+    if (conv == null) return [];
+    return conv.messages;
+  }
+
+  /// Add a message to the current conversation
+  void _addMessage(ChatMessageModel message) {
+    final idx = _conversations.indexWhere((c) => c.id == _currentConversationId);
+    if (idx == -1) return;
+
+    final conv = _conversations[idx];
+    final updatedMessages = [...conv.messages, message];
+    _conversations[idx] = conv.copyWith(
+      messages: updatedMessages,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  /// Update a message in the current conversation
+  void _updateMessageInConversation(String id, ChatMessageModel Function(ChatMessageModel) update) {
+    final convIdx = _conversations.indexWhere((c) => c.id == _currentConversationId);
+    if (convIdx == -1) return;
+
+    final conv = _conversations[convIdx];
+    final msgIdx = conv.messages.indexWhere((m) => m.id == id);
+    if (msgIdx == -1) return;
+
+    final updatedMessages = [...conv.messages];
+    updatedMessages[msgIdx] = update(updatedMessages[msgIdx]);
+    _conversations[convIdx] = conv.copyWith(
+      messages: updatedMessages,
+      updatedAt: DateTime.now(),
+    );
+  }
+
+  /// Save current conversation state
+  Future<void> _saveConversation() async {
+    await _persistence.saveConversations(_conversations);
   }
 
   /// Send a message and generate a response
   Future<void> sendMessage(String text) async {
     if (_generating || text.trim().isEmpty || !_ready) return;
 
+    // Auto-create conversation if none exists
+    if (_currentConversationId == null) {
+      await createNewConversation();
+    }
+
     // Add user message to UI
-    _messages.add(ChatMessageModel(
+    _addMessage(ChatMessageModel(
       id: _uuid.v4(),
       content: text,
       isUser: true,
     ));
 
+    // Update title if this is the first message
+    if (_currentMessages.length == 1) {
+      _updateConversationTitle(text);
+    }
+
     // Add assistant placeholder
     final assistantId = _uuid.v4();
-    _messages.add(ChatMessageModel(
+    _addMessage(ChatMessageModel(
       id: assistantId,
       content: '',
       isUser: false,
@@ -143,6 +297,9 @@ class ChatController extends ChangeNotifier {
       // Store in episodic memory
       await _memory.storeConversation(text, response);
       debugPrint('Conversation stored in memory');
+
+      // Save conversation to persistence
+      await _saveConversation();
 
     } catch (e) {
       debugPrint('Error in sendMessage: $e');
@@ -278,15 +435,12 @@ WHAT TO AVOID:
     required bool loading,
     int usedMemories = 0,
   }) {
-    final i = _messages.indexWhere((m) => m.id == id);
-    if (i != -1) {
-      _messages[i] = _messages[i].copyWith(
-        content: content.isEmpty ? '...' : content,
-        isLoading: loading,
-        usedMemories: usedMemories,
-      );
-      notifyListeners();
-    }
+    _updateMessageInConversation(id, (msg) => msg.copyWith(
+      content: content.isEmpty ? '...' : content,
+      isLoading: loading,
+      usedMemories: usedMemories,
+    ));
+    notifyListeners();
   }
 
   Future<void> _handleError(String messageId, Object error) async {
@@ -322,19 +476,24 @@ WHAT TO AVOID:
   Future<void> processPhoto(String path) async {
     if (!_ready || _generating) return;
 
+    // Auto-create conversation if none exists
+    if (_currentConversationId == null) {
+      await createNewConversation();
+    }
+
     _generating = true;
 
     final userMsgId = _uuid.v4();
     final assistantMsgId = _uuid.v4();
 
-    _messages.add(ChatMessageModel(
+    _addMessage(ChatMessageModel(
       id: userMsgId,
       content: 'Loading vision model...',
       isUser: true,
       imageUrl: path,
     ));
 
-    _messages.add(ChatMessageModel(
+    _addMessage(ChatMessageModel(
       id: assistantMsgId,
       content: '',
       isUser: false,
@@ -371,21 +530,23 @@ WHAT TO AVOID:
   }
 
   void _updateUserMessage(String id, String content) {
-    final i = _messages.indexWhere((m) => m.id == id);
-    if (i != -1) {
-      _messages[i] = _messages[i].copyWith(content: content);
-      notifyListeners();
-    }
+    _updateMessageInConversation(id, (msg) => msg.copyWith(content: content));
+    notifyListeners();
   }
 
   /// Process voice recording for transcription and memory
   Future<void> processVoice(String path) async {
     if (!_ready || _generating) return;
 
+    // Auto-create conversation if none exists
+    if (_currentConversationId == null) {
+      await createNewConversation();
+    }
+
     _generating = true;
 
     final id = _uuid.v4();
-    _messages.add(ChatMessageModel(
+    _addMessage(ChatMessageModel(
       id: id,
       content: 'Loading speech model...',
       isUser: true,
@@ -411,19 +572,22 @@ WHAT TO AVOID:
     }
   }
 
-  /// Clear current chat session
-  void clearChat() {
-    _messages.clear();
+  /// Clear current chat session (starts a new conversation)
+  Future<void> clearChat() async {
     _conversationHistory.clear();
     _memory.clearHistory();
+    await createNewConversation();
     notifyListeners();
   }
 
   /// Clear all memory and chat
   Future<void> clearAll() async {
     await _memory.clearAll();
-    _messages.clear();
+    _conversations.clear();
+    _currentConversationId = null;
     _conversationHistory.clear();
+    await _persistence.saveConversations([]);
+    await _persistence.saveCurrentConversationId(null);
     notifyListeners();
   }
 

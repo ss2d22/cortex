@@ -64,20 +64,34 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.backgroundColor,
+      drawer: _buildConversationDrawer(),
       appBar: AppBar(
         backgroundColor: AppTheme.surfaceColor,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu, color: AppTheme.textPrimary),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
         title: Row(
           children: [
             const Icon(Icons.psychology, color: AppTheme.primaryColor),
             const SizedBox(width: 8),
-            const Text('Cortex'),
-            if (_ctrl.isReady) ...[
-              const Spacer(),
-              _buildMemoryIndicator(),
-            ],
+            Expanded(
+              child: Text(
+                _ctrl.currentConversation?.title ?? 'Cortex',
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (_ctrl.isReady) _buildMemoryIndicator(),
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.add_comment),
+            tooltip: 'New Chat',
+            onPressed: () => _ctrl.createNewConversation(),
+          ),
           IconButton(
             icon: const Icon(Icons.memory),
             tooltip: 'Memory Explorer',
@@ -98,7 +112,7 @@ class _ChatScreenState extends State<ChatScreen> {
               }
             },
             itemBuilder: (_) => [
-              const PopupMenuItem(value: 'clear_chat', child: Text('Clear chat')),
+              const PopupMenuItem(value: 'clear_chat', child: Text('New chat')),
               const PopupMenuItem(
                 value: 'clear_all',
                 child: Text('Clear all memory', style: TextStyle(color: Colors.red)),
@@ -157,6 +171,217 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildConversationDrawer() {
+    return Drawer(
+      backgroundColor: AppTheme.surfaceColor,
+      child: SafeArea(
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: AppTheme.primaryGradient,
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.psychology, color: Colors.white, size: 32),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Cortex',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          'Your Conversations',
+                          style: TextStyle(color: Colors.white70, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.add, color: Colors.white),
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _ctrl.createNewConversation();
+                    },
+                  ),
+                ],
+              ),
+            ),
+
+            // Conversation list
+            Expanded(
+              child: _ctrl.conversations.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.chat_bubble_outline,
+                            size: 48,
+                            color: AppTheme.textMuted,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No conversations yet',
+                            style: TextStyle(color: AppTheme.textMuted),
+                          ),
+                          const SizedBox(height: 8),
+                          TextButton.icon(
+                            onPressed: () {
+                              Navigator.pop(context);
+                              _ctrl.createNewConversation();
+                            },
+                            icon: const Icon(Icons.add),
+                            label: const Text('Start a chat'),
+                          ),
+                        ],
+                      ),
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: _ctrl.conversations.length,
+                      itemBuilder: (context, index) {
+                        final conv = _ctrl.conversations[index];
+                        final isSelected = conv.id == _ctrl.currentConversationId;
+
+                        return Dismissible(
+                          key: Key(conv.id),
+                          direction: DismissDirection.endToStart,
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            color: Colors.red,
+                            child: const Icon(Icons.delete, color: Colors.white),
+                          ),
+                          confirmDismiss: (_) async {
+                            return await _showConfirmDialog(
+                              'Delete Conversation',
+                              'Are you sure you want to delete this conversation?',
+                            );
+                          },
+                          onDismissed: (_) {
+                            _ctrl.deleteConversation(conv.id);
+                          },
+                          child: ListTile(
+                            selected: isSelected,
+                            selectedTileColor: AppTheme.primaryColor.withAlpha(30),
+                            leading: Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? AppTheme.primaryColor.withAlpha(40)
+                                    : AppTheme.cardColor,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Icon(
+                                Icons.chat_bubble,
+                                size: 20,
+                                color: isSelected
+                                    ? AppTheme.primaryColor
+                                    : AppTheme.textMuted,
+                              ),
+                            ),
+                            title: Text(
+                              conv.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: isSelected
+                                    ? AppTheme.primaryColor
+                                    : AppTheme.textPrimary,
+                                fontWeight: isSelected
+                                    ? FontWeight.w600
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '${conv.messages.length} messages • ${conv.timeDescription}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.textMuted,
+                              ),
+                            ),
+                            onTap: () {
+                              Navigator.pop(context);
+                              _ctrl.switchToConversation(conv.id);
+                            },
+                          ),
+                        );
+                      },
+                    ),
+            ),
+
+            // Footer with memory stats
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.cardColor,
+                border: Border(
+                  top: BorderSide(color: Colors.white.withAlpha(10)),
+                ),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildDrawerStat(
+                    '${_ctrl.conversations.length}',
+                    'Chats',
+                    Icons.chat,
+                  ),
+                  _buildDrawerStat(
+                    '${_ctrl.getMemoryStats().semanticFactCount}',
+                    'Facts',
+                    Icons.lightbulb,
+                  ),
+                  _buildDrawerStat(
+                    '${_ctrl.getMemoryStats().episodicCount}',
+                    'Memories',
+                    Icons.memory,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDrawerStat(String value, String label, IconData icon) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 20, color: AppTheme.primaryColor),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: AppTheme.textPrimary,
+          ),
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            color: AppTheme.textMuted,
+          ),
+        ),
+      ],
     );
   }
 

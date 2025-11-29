@@ -16,9 +16,9 @@ class AppConstants {
   static const String visionModel = 'lfm2-vl-450m';
 
   /// Speech-to-text model
-  /// Whisper Small: Better accuracy than tiny, ~150 MB
-  /// IMPORTANT: Do NOT use local- prefix
-  static const String sttModel = 'whisper-small';
+  /// Whisper Tiny: Most stable, lightweight, ~75 MB
+  /// Note: whisper-small has FFI issues on some devices
+  static const String sttModel = 'whisper-tiny';
 
   // ===== CONTEXT SETTINGS =====
 

@@ -19,7 +19,7 @@ class _LoadingScreenState extends State<LoadingScreen>
   double _progress = 0;
   bool _error = false;
   int _modelIndex = 0;
-  static const int _totalModels = 3; // Primary, Embedding, RAG
+  static const int _totalModels = 5; // Primary, Embedding, RAG, STT, Vision
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
@@ -60,6 +60,10 @@ class _LoadingScreenState extends State<LoadingScreen>
             _modelIndex = 1;
           } else if (model == 'RAG') {
             _modelIndex = 2;
+          } else if (model == 'STT') {
+            _modelIndex = 3;
+          } else if (model == 'Vision') {
+            _modelIndex = 4;
           }
         });
       }
@@ -102,6 +106,10 @@ class _LoadingScreenState extends State<LoadingScreen>
         return 'Memory Model';
       case 'RAG':
         return 'Memory Database';
+      case 'STT':
+        return 'Voice Model';
+      case 'Vision':
+        return 'Vision Model';
       default:
         return _currentModel;
     }

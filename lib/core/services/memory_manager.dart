@@ -42,7 +42,10 @@ class MemoryManager extends ChangeNotifier {
     final savedProcedures = await _persistence.loadProcedures();
     _procedures.addAll(savedProcedures);
 
-    debugPrint('MemoryManager initialized: ${_facts.length} facts, ${_procedures.length} procedures');
+    final savedEpisodes = await _persistence.loadEpisodes();
+    _recentEpisodes.addAll(savedEpisodes);
+
+    debugPrint('MemoryManager initialized: ${_facts.length} facts, ${_procedures.length} procedures, ${_recentEpisodes.length} episodes');
     notifyListeners();
   }
 
@@ -83,6 +86,9 @@ class MemoryManager extends ChangeNotifier {
       if (_recentEpisodes.length > 50) {
         _recentEpisodes.removeAt(0);
       }
+
+      // Persist episodic memories
+      await _persistence.saveEpisodes(_recentEpisodes);
 
       debugPrint('Stored episodic memory: $id (importance: $importance, source: ${source.name})');
 

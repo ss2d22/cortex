@@ -187,60 +187,163 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppTheme.primaryColor, AppTheme.secondaryColor],
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // Logo with gradient
+            Container(
+              width: 90,
+              height: 90,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppTheme.primaryColor, AppTheme.secondaryColor],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppTheme.primaryColor.withAlpha(60),
+                    blurRadius: 20,
+                    spreadRadius: 2,
+                  ),
+                ],
               ),
-              borderRadius: BorderRadius.circular(20),
+              child: const Icon(Icons.psychology, size: 45, color: Colors.white),
             ),
-            child: const Icon(Icons.psychology, size: 40, color: Colors.white),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            'Hello! I\'m Cortex',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+            const SizedBox(height: 28),
+
+            // Title
+            const Text(
+              'Meet Cortex',
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'I remember everything you tell me.',
-            style: TextStyle(color: Colors.white70),
-          ),
-          const SizedBox(height: 24),
-          Container(
-            padding: const EdgeInsets.all(16),
-            margin: const EdgeInsets.symmetric(horizontal: 32),
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceColor,
-              borderRadius: BorderRadius.circular(12),
+            const SizedBox(height: 8),
+            const Text(
+              'Your AI that actually remembers you',
+              style: TextStyle(color: Colors.white70, fontSize: 16),
             ),
-            child: const Column(
-              children: [
-                Text(
-                  'Try saying:',
-                  style: TextStyle(color: Colors.white54, fontSize: 12),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  '"My name is [Name] and I work at [Company]"',
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
-                  textAlign: TextAlign.center,
-                ),
-              ],
+            const SizedBox(height: 32),
+
+            // Privacy highlight
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.green.withAlpha(20),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.green.withAlpha(40)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: Colors.green.withAlpha(30),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.lock, color: Colors.green, size: 24),
+                  ),
+                  const SizedBox(width: 16),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '100% Private',
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Everything runs on your device. No cloud, no data sharing.',
+                          style: TextStyle(color: Colors.white70, fontSize: 13),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 24),
+
+            // Features list
+            _buildFeatureRow(Icons.memory, 'Remembers facts about you'),
+            const SizedBox(height: 12),
+            _buildFeatureRow(Icons.mic, 'Understands voice memos'),
+            const SizedBox(height: 12),
+            _buildFeatureRow(Icons.photo_camera, 'Analyzes your photos'),
+            const SizedBox(height: 12),
+            _buildFeatureRow(Icons.trending_up, 'Gets smarter over time'),
+
+            const SizedBox(height: 32),
+
+            // Try saying section
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceColor,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                children: [
+                  const Text(
+                    'Start by introducing yourself:',
+                    style: TextStyle(color: Colors.white54, fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withAlpha(20),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.primaryColor.withAlpha(40)),
+                    ),
+                    child: const Text(
+                      '"Hi! My name is Alex and I\'m a software engineer"',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontStyle: FontStyle.italic,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildFeatureRow(IconData icon, String text) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: AppTheme.primaryColor.withAlpha(20),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: AppTheme.primaryColor, size: 20),
+        ),
+        const SizedBox(width: 16),
+        Text(
+          text,
+          style: const TextStyle(color: Colors.white70, fontSize: 15),
+        ),
+      ],
     );
   }
 
@@ -304,6 +407,48 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _pickImage(ImageSource source) async {
     try {
+      // Check permission based on source
+      Permission permission = source == ImageSource.camera
+          ? Permission.camera
+          : Permission.photos;
+
+      var status = await permission.status;
+
+      if (status.isDenied || status.isRestricted) {
+        status = await permission.request();
+      }
+
+      if (status.isPermanentlyDenied) {
+        if (mounted) {
+          final permissionName = source == ImageSource.camera ? 'Camera' : 'Photos';
+          final openSettings = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              backgroundColor: AppTheme.surfaceColor,
+              title: Text('$permissionName Access', style: const TextStyle(color: Colors.white)),
+              content: Text(
+                'Cortex needs $permissionName access to analyze images. Please enable it in Settings.',
+                style: const TextStyle(color: Colors.white70),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Open Settings'),
+                ),
+              ],
+            ),
+          );
+          if (openSettings == true) {
+            await openAppSettings();
+          }
+        }
+        return;
+      }
+
       final img = await _picker.pickImage(
         source: source,
         maxWidth: AppConstants.imageMaxDimension.toDouble(),
@@ -324,9 +469,10 @@ class _ChatScreenState extends State<ChatScreen> {
         _ctrl.processPhoto(savedPath);
       }
     } catch (e) {
+      debugPrint('Error picking image: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error picking image: $e')),
+          SnackBar(content: Text('Error: ${e.toString().split(':').last.trim()}')),
         );
       }
     }
@@ -342,22 +488,62 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Future<void> _startRecording() async {
     try {
-      // Check permission
-      final status = await Permission.microphone.request();
+      // Check current permission status first
+      var status = await Permission.microphone.status;
+
+      // If not determined, request permission
+      if (status.isDenied || status.isRestricted) {
+        status = await Permission.microphone.request();
+      }
+
+      // Handle permanently denied - show dialog to open settings
+      if (status.isPermanentlyDenied) {
+        if (mounted) {
+          final openSettings = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              backgroundColor: AppTheme.surfaceColor,
+              title: const Text('Microphone Access', style: TextStyle(color: Colors.white)),
+              content: const Text(
+                'Cortex needs microphone access for voice memos. Please enable it in Settings.',
+                style: TextStyle(color: Colors.white70),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Open Settings'),
+                ),
+              ],
+            ),
+          );
+          if (openSettings == true) {
+            await openAppSettings();
+          }
+        }
+        return;
+      }
+
       if (!status.isGranted) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Microphone permission required')),
+            const SnackBar(
+              content: Text('Tap the mic again to enable voice memos'),
+              duration: Duration(seconds: 2),
+            ),
           );
         }
         return;
       }
 
-      // Check if can record
+      // Double-check recorder has permission
       if (!await _recorder.hasPermission()) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Cannot access microphone')),
+            const SnackBar(content: Text('Please grant microphone access')),
           );
         }
         return;

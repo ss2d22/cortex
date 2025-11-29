@@ -517,12 +517,108 @@ class MemoryManager extends ChangeNotifier {
     }
 
     // Emotion patterns
-    final emotions = ['stressed', 'anxious', 'happy', 'sad', 'angry', 'frustrated', 'tired', 'exhausted'];
+    final emotions = ['stressed', 'anxious', 'happy', 'sad', 'angry', 'frustrated', 'tired', 'exhausted', 'excited', 'nervous', 'overwhelmed'];
     for (final emotion in emotions) {
-      if (text.contains(emotion)) {
+      if (RegExp(r"\b" + emotion + r"\b").hasMatch(text)) {
         _addFact('feels', emotion, memoryId);
         extracted++;
         break;
+      }
+    }
+
+    // Pet patterns
+    final petMatch = RegExp(
+      r"(?:i have|my|got)\s+(?:a\s+)?(?:pet\s+)?([a-z]+)\s+(?:named|called)\s+([a-z]+)",
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (petMatch != null) {
+      final petType = petMatch.group(1)?.trim();
+      final petName = petMatch.group(2)?.trim();
+      if (petType != null && petName != null) {
+        _addFact('pet_is', '$petType named ${_capitalize(petName)}', memoryId);
+        extracted++;
+      }
+    }
+
+    // Hobby patterns
+    final hobbyMatch = RegExp(
+      r"(?:i\s+(?:like|love|enjoy)\s+(?:to\s+)?|my hobby is\s+)([a-z]+(?:ing)?(?:\s+[a-z]+)?)",
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (hobbyMatch != null) {
+      final hobby = hobbyMatch.group(1)?.trim();
+      if (hobby != null && hobby.length > 2 && !['it', 'that', 'this'].contains(hobby)) {
+        _addFact('hobby_is', hobby, memoryId);
+        extracted++;
+      }
+    }
+
+    // Relationship patterns
+    final relationshipMatch = RegExp(
+      r"my\s+(wife|husband|partner|boyfriend|girlfriend|spouse)'?s?\s+(?:name is\s+)?([a-z]+)",
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (relationshipMatch != null) {
+      final relation = relationshipMatch.group(1)?.trim();
+      final name = relationshipMatch.group(2)?.trim();
+      if (relation != null && name != null && name.length > 1) {
+        _addFact('married_to', _capitalize(name), memoryId);
+        extracted++;
+      }
+    }
+
+    // Children patterns
+    final childMatch = RegExp(
+      r"(?:i have|my)\s+(?:a\s+)?(?:(\d+)\s+)?(?:kid|child|son|daughter)s?(?:\s+named\s+([a-z]+))?",
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (childMatch != null) {
+      final count = childMatch.group(1);
+      final name = childMatch.group(2);
+      if (name != null) {
+        _addFact('has_child', _capitalize(name), memoryId);
+        extracted++;
+      } else if (count != null) {
+        _addFact('has_child', '$count children', memoryId);
+        extracted++;
+      }
+    }
+
+    // Birthday patterns
+    final birthdayMatch = RegExp(
+      r"my birthday is\s+(?:on\s+)?([a-z]+\s+\d{1,2}|\d{1,2}[\/\-]\d{1,2})",
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (birthdayMatch != null) {
+      final birthday = birthdayMatch.group(1)?.trim();
+      if (birthday != null) {
+        _addFact('birthday_is', birthday, memoryId);
+        extracted++;
+      }
+    }
+
+    // Likes/Dislikes patterns
+    final likesMatch = RegExp(
+      r"i\s+(?:really\s+)?(?:like|love)\s+([a-z]+(?:\s+[a-z]+)?)",
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (likesMatch != null && hobbyMatch == null) {
+      final likes = likesMatch.group(1)?.trim();
+      if (likes != null && likes.length > 1 && !['it', 'that', 'this', 'to'].contains(likes)) {
+        _addFact('likes', likes, memoryId);
+        extracted++;
+      }
+    }
+
+    final dislikesMatch = RegExp(
+      r"i\s+(?:really\s+)?(?:hate|dislike|don'?t like)\s+([a-z]+(?:\s+[a-z]+)?)",
+      caseSensitive: false,
+    ).firstMatch(text);
+    if (dislikesMatch != null) {
+      final dislikes = dislikesMatch.group(1)?.trim();
+      if (dislikes != null && dislikes.length > 1 && !['it', 'that', 'this'].contains(dislikes)) {
+        _addFact('dislikes', dislikes, memoryId);
+        extracted++;
       }
     }
 

@@ -4,7 +4,6 @@ import 'package:uuid/uuid.dart';
 import '../../core/services/cactus_service.dart';
 import '../../core/services/memory_manager.dart';
 import '../../core/services/persistence_service.dart';
-import '../../core/tools/memory_tools.dart';
 import '../../core/tools/tool_handler.dart';
 import '../../core/models/chat_message.dart';
 import '../../core/models/semantic_fact.dart';
@@ -51,11 +50,17 @@ class ChatController extends ChangeNotifier {
 
     try {
       final context = await _memory.buildContext(text);
-      final systemPrompt = '''You are Cortex, a friendly AI assistant with persistent memory.
+      final systemPrompt = '''You are Cortex, a caring and empathetic AI companion. You automatically remember everything - never ask the user to "remember" or "use" any commands.
 
 $context
 
-Be conversational, friendly, and keep responses concise.''';
+CRITICAL RULES:
+- NEVER mention tools, functions, or ask user to say "remember" - memory is AUTOMATIC
+- Be warm, empathetic, and genuinely supportive
+- Reference specific details from what you know about the user
+- If the user shares something difficult, acknowledge their feelings FIRST before advice
+- Keep responses short (2-3 sentences max)
+- Never give generic advice - always personalize based on their context''';
 
       final msgs = <ChatMessage>[
         ChatMessage(content: systemPrompt, role: 'system'),
@@ -68,8 +73,8 @@ Be conversational, friendly, and keep responses concise.''';
       final stream = await _cactus.lm.generateCompletionStream(
         messages: msgs,
         params: CactusCompletionParams(
-          tools: memoryTools,
-          maxTokens: 400,
+          // No tools - we use regex extraction instead (small models can't handle tools properly)
+          maxTokens: 300,
         ),
       );
 

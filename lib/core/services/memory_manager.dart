@@ -225,198 +225,181 @@ class MemoryManager {
   // SEMANTIC MEMORY (Facts with confidence)
   //============================================
 
+  /// Queue for background extraction
+  final List<_ExtractionTask> _extractionQueue = [];
+  bool _isExtracting = false;
+
   Future<void> _extractFacts(String content, String memoryId) async {
-    try {
-      // Extract user message portion
-      String userContent = content;
-      if (content.startsWith('User:')) {
-        final assistantIndex = content.indexOf('Assistant:');
-        if (assistantIndex > 0) {
-          userContent = content.substring(5, assistantIndex).trim();
-        } else {
-          userContent = content.substring(5).trim();
-        }
-      }
-
-      // Use regex-based extraction directly (more reliable than small LLM)
-      // The LLM was hallucinating facts not in the content
-      _extractFactsWithRegex(content, memoryId);
-
-      // Also extract emotional states
-      _extractEmotionalState(userContent, memoryId);
-
-      if (_facts.isNotEmpty) {
-        await _persistence.saveFacts(_facts);
-      }
-      debugPrint('Facts extracted: ${_facts.length} total');
-    } catch (e) {
-      debugPrint('Error extracting facts: $e');
-    }
-  }
-
-  /// Extract emotional states like "I'm stressed", "I feel happy"
-  void _extractEmotionalState(String content, String memoryId) {
-    final normalized = content.toLowerCase();
-
-    // Emotional state patterns
-    final emotionPatterns = {
-      'stressed': RegExp(r"(?:i'?m|i am|i feel|feeling)\s+(?:really\s+|quite\s+|very\s+)?stressed", caseSensitive: false),
-      'happy': RegExp(r"(?:i'?m|i am|i feel|feeling)\s+(?:really\s+|quite\s+|very\s+)?happy", caseSensitive: false),
-      'sad': RegExp(r"(?:i'?m|i am|i feel|feeling)\s+(?:really\s+|quite\s+|very\s+)?sad", caseSensitive: false),
-      'anxious': RegExp(r"(?:i'?m|i am|i feel|feeling)\s+(?:really\s+|quite\s+|very\s+)?anxious", caseSensitive: false),
-      'tired': RegExp(r"(?:i'?m|i am|i feel|feeling)\s+(?:really\s+|quite\s+|very\s+)?tired", caseSensitive: false),
-      'overwhelmed': RegExp(r"(?:i'?m|i am|i feel|feeling)\s+(?:really\s+|quite\s+|very\s+)?overwhelmed", caseSensitive: false),
-      'frustrated': RegExp(r"(?:i'?m|i am|i feel|feeling)\s+(?:really\s+|quite\s+|very\s+)?frustrated", caseSensitive: false),
-      'excited': RegExp(r"(?:i'?m|i am|i feel|feeling)\s+(?:really\s+|quite\s+|very\s+)?excited", caseSensitive: false),
-    };
-
-    for (final entry in emotionPatterns.entries) {
-      if (entry.value.hasMatch(normalized)) {
-        _addOrUpdateFact(SemanticFact(
-          id: 'fact_${_uuid.v4()}',
-          subject: 'User',
-          predicate: 'feels',
-          object: entry.key,
-          extractedAt: DateTime.now(),
-          sourceMemoryIds: [memoryId],
-        ));
-        debugPrint('Extracted emotional state: ${entry.key}');
-      }
-    }
-  }
-
-  /// Fallback: Extract facts using regex patterns directly from user content
-  void _extractFactsWithRegex(String content, String memoryId) {
-    debugPrint('Regex fallback on content length: ${content.length}');
-
-    // Extract just the user message if this is a conversation format
-    String userPart = content;
+    // Extract user message portion
+    String userContent = content;
     if (content.startsWith('User:')) {
       final assistantIndex = content.indexOf('Assistant:');
       if (assistantIndex > 0) {
-        userPart = content.substring(5, assistantIndex).trim();
+        userContent = content.substring(5, assistantIndex).trim();
       } else {
-        userPart = content.substring(5).trim();
+        userContent = content.substring(5).trim();
       }
     }
-    debugPrint('Extracting from user part: $userPart');
 
-    // Normalize apostrophes (handle curly quotes and various apostrophe types)
-    final normalized = userPart
-        .replaceAll(''', "'")
-        .replaceAll(''', "'")
-        .replaceAll('`', "'")
-        .replaceAll('´', "'")
-        .replaceAll('"', '"')
-        .replaceAll('"', '"');
+    // Skip very short messages
+    if (userContent.length < 5) {
+      debugPrint('Skipping extraction for short message');
+      return;
+    }
 
-    // Pattern: "I'm [name]" or "my name is [name]" or "I am [name]"
-    // Handle various formats like "hi I'm sriram" or "I am John"
-    final namePatterns = [
-      RegExp(r"i'm\s+([a-zA-Z]+)", caseSensitive: false),
-      RegExp(r"im\s+([a-zA-Z]+)", caseSensitive: false),  // Without apostrophe
-      RegExp(r"i\s+am\s+([a-zA-Z]+)", caseSensitive: false),
-      RegExp(r"my\s+name\s+is\s+([a-zA-Z]+)", caseSensitive: false),
-      RegExp(r"call\s+me\s+([a-zA-Z]+)", caseSensitive: false),
-    ];
-    for (final pattern in namePatterns) {
-      final match = pattern.firstMatch(normalized);
-      if (match != null) {
-        final name = match.group(1)?.trim();
-        debugPrint('Name pattern matched: ${match.group(0)}, captured: $name');
-        if (name != null && name.length > 1 && !_isCommonWord(name)) {
-          _addOrUpdateFact(SemanticFact(
-            id: 'fact_${_uuid.v4()}',
-            subject: 'User',
-            predicate: 'name_is',
-            object: name,
-            extractedAt: DateTime.now(),
-            sourceMemoryIds: [memoryId],
-          ));
-          debugPrint('Regex extracted name: $name');
-          break; // Only extract one name
+    // Queue extraction task (will run after current LLM operation completes)
+    _extractionQueue.add(_ExtractionTask(userContent, memoryId));
+    _processExtractionQueue();
+  }
+
+  Future<void> _processExtractionQueue() async {
+    if (_isExtracting || _extractionQueue.isEmpty) return;
+
+    _isExtracting = true;
+
+    while (_extractionQueue.isNotEmpty) {
+      final task = _extractionQueue.removeAt(0);
+      try {
+        await _extractWithLLM(task.content, task.memoryId);
+      } catch (e) {
+        debugPrint('Extraction error: $e');
+      }
+    }
+
+    _isExtracting = false;
+  }
+
+  /// Extract facts using reliable regex patterns (small models can't do structured extraction)
+  Future<void> _extractWithLLM(String userMessage, String memoryId) async {
+    try {
+      debugPrint('Regex extraction for: $userMessage');
+      final text = userMessage.toLowerCase();
+      int extracted = 0;
+
+      // Normalize smart quotes to regular quotes
+      final normalizedText = text.replaceAll(''', "'").replaceAll(''', "'");
+
+      // Name patterns: "I'm [name]", "my name is [name]", "I am [name]"
+      final namePatterns = [
+        RegExp(r"(?:i'm|i am|my name is|call me)\s+([a-z]{2,15})(?:\s|,|\.|\!|$)", caseSensitive: false),
+      ];
+      for (final pattern in namePatterns) {
+        final match = pattern.firstMatch(normalizedText);
+        if (match != null) {
+          final name = match.group(1)!.trim();
+          // Filter out non-names
+          final badWords = ['stressed', 'happy', 'sad', 'tired', 'being', 'going', 'working', 'feeling'];
+          if (!badWords.contains(name.toLowerCase())) {
+            _addFact('name_is', _capitalize(name), memoryId);
+            extracted++;
+            break;
+          }
         }
       }
-    }
 
-    // Pattern: "I work at [company]" or "working at [company]"
-    final workPatterns = [
-      RegExp(r"i\s+work\s+at\s+([a-zA-Z0-9]+)", caseSensitive: false),
-      RegExp(r"work\s+for\s+([a-zA-Z0-9]+)", caseSensitive: false),
-      RegExp(r"working\s+at\s+([a-zA-Z0-9]+)", caseSensitive: false),
-    ];
-    for (final pattern in workPatterns) {
-      final match = pattern.firstMatch(normalized);
-      if (match != null) {
-        final company = match.group(1)?.trim();
-        debugPrint('Work pattern matched: ${match.group(0)}, captured: $company');
-        if (company != null && company.length > 1) {
-          _addOrUpdateFact(SemanticFact(
-            id: 'fact_${_uuid.v4()}',
-            subject: 'User',
-            predicate: 'works_at',
-            object: company,
-            extractedAt: DateTime.now(),
-            sourceMemoryIds: [memoryId],
-          ));
-          debugPrint('Regex extracted workplace: $company');
+      // Company patterns: "work at [company]", "working at [company]"
+      final companyMatch = RegExp(r"(?:work(?:ing)?|employed)\s+(?:at|for)\s+([a-z0-9]+)", caseSensitive: false).firstMatch(text);
+      if (companyMatch != null) {
+        final company = companyMatch.group(1)!.trim();
+        if (company.length >= 2) {
+          _addFact('works_at', _capitalize(company), memoryId);
+          extracted++;
+        }
+      }
+
+      // Job patterns: "I'm a [job]", "I work as a [job]"
+      final jobMatch = RegExp(r"(?:i'm a|i am a|work as a?)\s+([a-z]+(?:\s+[a-z]+)?)", caseSensitive: false).firstMatch(text);
+      if (jobMatch != null) {
+        final job = jobMatch.group(1)!.trim();
+        final badJobs = ['employee', 'worker', 'person'];
+        if (!badJobs.contains(job.toLowerCase()) && job.length >= 3) {
+          _addFact('job_is', job, memoryId);
+          extracted++;
+        }
+      }
+
+      // Location patterns: "I live in [city]", "I'm from [place]"
+      final locationMatch = RegExp(r"(?:live in|from|based in|located in)\s+([a-z]+(?:\s+[a-z]+)?)", caseSensitive: false).firstMatch(text);
+      if (locationMatch != null) {
+        final location = locationMatch.group(1)!.trim();
+        if (location.length >= 2) {
+          _addFact('lives_in', _capitalize(location), memoryId);
+          extracted++;
+        }
+      }
+
+      // Emotion patterns: "I'm stressed", "feeling sad", "I feel anxious"
+      final emotionPatterns = ['stressed', 'anxious', 'happy', 'sad', 'angry', 'frustrated', 'tired', 'exhausted', 'scared', 'worried', 'overwhelmed', 'depressed'];
+      for (final emotion in emotionPatterns) {
+        if (text.contains(emotion)) {
+          _addFact('feels', emotion, memoryId);
+          extracted++;
           break;
         }
       }
-    }
 
-    // Pattern: "I live in [place]" or "I'm from [place]"
-    final locationPatterns = [
-      RegExp(r"i\s+live\s+in\s+([a-zA-Z]+)", caseSensitive: false),
-      RegExp(r"i['\u2019]?m\s+from\s+([a-zA-Z]+)", caseSensitive: false),
-      RegExp(r"based\s+in\s+([a-zA-Z]+)", caseSensitive: false),
-    ];
-    for (final pattern in locationPatterns) {
-      final match = pattern.firstMatch(normalized);
-      if (match != null) {
-        final place = match.group(1)?.trim();
-        if (place != null && place.length > 1 && !_isCommonWord(place)) {
-          _addOrUpdateFact(SemanticFact(
-            id: 'fact_${_uuid.v4()}',
-            subject: 'User',
-            predicate: 'lives_in',
-            object: place,
-            extractedAt: DateTime.now(),
-            sourceMemoryIds: [memoryId],
-          ));
-          debugPrint('Regex extracted location: $place');
+      // Boss/abuse patterns
+      if (text.contains('boss') && (text.contains('abuse') || text.contains('yell') || text.contains('scream') || text.contains('throw'))) {
+        final behaviors = <String>[];
+        if (text.contains('abuse')) behaviors.add('abusive');
+        if (text.contains('yell') || text.contains('scream')) behaviors.add('yells');
+        if (text.contains('throw')) behaviors.add('throws things');
+        if (behaviors.isNotEmpty) {
+          _addFact('boss_behavior', behaviors.join(', '), memoryId);
+          extracted++;
+        }
+      }
+
+      // Domestic/relationship abuse patterns
+      final abuseWords = ['beat', 'hit', 'hurt', 'abuse', 'attack', 'slap', 'punch', 'kick'];
+      final relationshipWords = ['wife', 'husband', 'spouse', 'partner', 'boyfriend', 'girlfriend', 'parent', 'father', 'mother', 'dad', 'mom'];
+      for (final person in relationshipWords) {
+        if (text.contains(person)) {
+          for (final abuse in abuseWords) {
+            if (text.contains(abuse)) {
+              _addFact('abuse_situation', '$person is abusive', memoryId);
+              extracted++;
+              break;
+            }
+          }
           break;
         }
       }
-    }
 
-    // Pattern: "I like [thing]" or "I love [thing]"
-    final likePatterns = [
-      RegExp(r"i\s+(?:really\s+)?(?:like|love|enjoy)\s+([a-zA-Z]+)", caseSensitive: false),
-    ];
-    for (final pattern in likePatterns) {
-      final match = pattern.firstMatch(normalized);
-      if (match != null) {
-        final thing = match.group(1)?.trim();
-        if (thing != null && thing.length > 1 && !_isCommonWord(thing)) {
-          _addOrUpdateFact(SemanticFact(
-            id: 'fact_${_uuid.v4()}',
-            subject: 'User',
-            predicate: 'likes',
-            object: thing,
-            extractedAt: DateTime.now(),
-            sourceMemoryIds: [memoryId],
-          ));
-          debugPrint('Regex extracted like: $thing');
-          break;
+      // Age pattern: "I'm [number] years old"
+      final ageMatch = RegExp(r"(?:i'm|i am)\s+(\d{1,3})\s*(?:years?\s*old)?", caseSensitive: false).firstMatch(text);
+      if (ageMatch != null) {
+        final age = int.tryParse(ageMatch.group(1)!);
+        if (age != null && age > 0 && age < 120) {
+          _addFact('age_is', age.toString(), memoryId);
+          extracted++;
         }
       }
+
+      // Save facts
+      if (extracted > 0) {
+        await _persistence.saveFacts(_facts);
+        debugPrint('Extracted $extracted facts, total: ${_facts.length}');
+      } else {
+        debugPrint('No facts extracted from message');
+      }
+    } catch (e) {
+      debugPrint('Extraction error: $e');
     }
   }
 
-  bool _isCommonWord(String word) {
-    const commonWords = {'a', 'an', 'the', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'need', 'dare', 'ought', 'used', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 'just', 'also'};
-    return commonWords.contains(word.toLowerCase());
+  String _capitalize(String s) => s.isEmpty ? s : '${s[0].toUpperCase()}${s.substring(1)}';
+
+  void _addFact(String predicate, String value, String memoryId) {
+    _addOrUpdateFact(SemanticFact(
+      id: 'fact_${_uuid.v4()}',
+      subject: 'User',
+      predicate: predicate,
+      object: value,
+      extractedAt: DateTime.now(),
+      sourceMemoryIds: [memoryId],
+    ));
+    debugPrint('Extracted: $predicate = $value');
   }
 
   void _addOrUpdateFact(SemanticFact newFact) {
@@ -603,6 +586,12 @@ class MemoryManager {
   //============================================
 
   Future<List<MemoryRetrievalResult>> retrieveRelevant(String query, {int limit = 5}) async {
+    // Skip retrieval for very short queries (embedding fails)
+    if (query.trim().length < 10) {
+      debugPrint('Query too short for retrieval, skipping');
+      return [];
+    }
+
     try {
       final ragResults = await _cactus.rag.search(text: query, limit: limit * 2);
       final results = <MemoryRetrievalResult>[];
@@ -793,4 +782,12 @@ class MemoryStatistics {
   });
 
   int get totalMemories => episodicCount + semanticFactCount + proceduralCount;
+}
+
+/// Task for background extraction queue
+class _ExtractionTask {
+  final String content;
+  final String memoryId;
+
+  _ExtractionTask(this.content, this.memoryId);
 }

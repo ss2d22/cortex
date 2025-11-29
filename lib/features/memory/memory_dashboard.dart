@@ -166,9 +166,9 @@ class _MemoryDashboardState extends State<MemoryDashboard>
           ),
           _buildMiniStat(
             '${(stats.averageFactConfidence * 100).toInt()}%',
-            'Health',
+            'Confidence',
             AppTheme.strengthHigh,
-            Icons.favorite,
+            Icons.verified,
           ),
         ],
       ),
@@ -302,7 +302,7 @@ class _MemoryDashboardState extends State<MemoryDashboard>
                 const SizedBox(height: 4),
                 Text(
                   stats.totalMemories > 0
-                      ? '${stats.totalMemories} memories stored'
+                      ? '${stats.semanticFactCount} facts learned'
                       : 'Tell me about yourself!',
                   style: TextStyle(
                     color: Colors.white.withAlpha(200),
@@ -312,10 +312,36 @@ class _MemoryDashboardState extends State<MemoryDashboard>
               ],
             ),
           ),
-          MemoryStrengthMeter(
-            strength: stats.totalMemories > 0 ? stats.averageFactConfidence : 0.1,
-            size: 60,
-            showLabel: false,
+          // Show fact count instead of confusing percentage
+          Container(
+            width: 60,
+            height: 60,
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(30),
+              borderRadius: BorderRadius.circular(30),
+            ),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${stats.semanticFactCount}',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    'facts',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: Colors.white.withAlpha(200),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),

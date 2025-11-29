@@ -35,15 +35,21 @@ class AppTheme {
 
   // Get color for memory strength (0-1)
   static Color getStrengthColor(double strength) {
-    if (strength >= 0.7) return strengthHigh;
-    if (strength >= 0.4) return strengthMedium;
+    // Guard against NaN and out-of-range values
+    if (strength.isNaN || strength.isInfinite) return strengthLow;
+    final s = strength.clamp(0.0, 1.0);
+    if (s >= 0.7) return strengthHigh;
+    if (s >= 0.4) return strengthMedium;
     return strengthLow;
   }
 
   // Get color with opacity based on strength
   static Color getStrengthColorWithOpacity(double strength) {
-    final baseColor = getStrengthColor(strength);
-    return baseColor.withOpacity(0.3 + strength * 0.7);
+    // Guard against NaN and out-of-range values
+    if (strength.isNaN || strength.isInfinite) strength = 0.0;
+    final s = strength.clamp(0.0, 1.0);
+    final baseColor = getStrengthColor(s);
+    return baseColor.withAlpha(((0.3 + s * 0.7) * 255).round());
   }
 
   // Memory type gradients

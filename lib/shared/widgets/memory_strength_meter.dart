@@ -18,7 +18,9 @@ class MemoryStrengthMeter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = AppTheme.getStrengthColor(strength);
+    // Guard against NaN values
+    final safeStrength = strength.isNaN || strength.isInfinite ? 0.0 : strength.clamp(0.0, 1.0);
+    final color = AppTheme.getStrengthColor(safeStrength);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -44,7 +46,7 @@ class MemoryStrengthMeter extends StatelessWidget {
               ),
               // Progress circle
               TweenAnimationBuilder<double>(
-                tween: Tween(begin: 0, end: strength),
+                tween: Tween(begin: 0, end: safeStrength),
                 duration: const Duration(milliseconds: 800),
                 curve: Curves.easeOutCubic,
                 builder: (context, value, child) {
@@ -52,7 +54,7 @@ class MemoryStrengthMeter extends StatelessWidget {
                     width: size,
                     height: size,
                     child: CircularProgressIndicator(
-                      value: value,
+                      value: value.clamp(0.0, 1.0),
                       strokeWidth: size * 0.1,
                       backgroundColor: Colors.transparent,
                       valueColor: AlwaysStoppedAnimation(color),
@@ -63,7 +65,7 @@ class MemoryStrengthMeter extends StatelessWidget {
               ),
               // Center text
               Text(
-                '${(strength * 100).toInt()}%',
+                '${(safeStrength * 100).toInt()}%',
                 style: TextStyle(
                   fontSize: size * 0.22,
                   fontWeight: FontWeight.bold,
@@ -76,7 +78,7 @@ class MemoryStrengthMeter extends StatelessWidget {
         if (showLabel) ...[
           const SizedBox(height: 8),
           Text(
-            label ?? _getStrengthLabel(strength),
+            label ?? _getStrengthLabel(safeStrength),
             style: AppTheme.bodySmall.copyWith(color: color),
           ),
         ],
@@ -108,7 +110,9 @@ class MemoryStrengthBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = AppTheme.getStrengthColor(strength);
+    // Guard against NaN values
+    final safeStrength = strength.isNaN || strength.isInfinite ? 0.0 : strength.clamp(0.0, 1.0);
+    final color = AppTheme.getStrengthColor(safeStrength);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -122,13 +126,13 @@ class MemoryStrengthBar extends StatelessWidget {
           child: ClipRRect(
             borderRadius: BorderRadius.circular(height / 2),
             child: TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: strength),
+              tween: Tween(begin: 0, end: safeStrength),
               duration: const Duration(milliseconds: 600),
               curve: Curves.easeOutCubic,
               builder: (context, value, child) {
                 return FractionallySizedBox(
                   alignment: Alignment.centerLeft,
-                  widthFactor: value,
+                  widthFactor: value.clamp(0.0, 1.0),
                   child: Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -144,7 +148,7 @@ class MemoryStrengthBar extends StatelessWidget {
         if (showPercentage) ...[
           const SizedBox(height: 4),
           Text(
-            '${(strength * 100).toInt()}%',
+            '${(safeStrength * 100).toInt()}%',
             style: AppTheme.bodySmall.copyWith(color: color),
           ),
         ],

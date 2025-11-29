@@ -112,13 +112,24 @@ class CactusService {
     // Create fresh LM instance to avoid stale state
     lm = CactusLM(enableToolFiltering: true);
 
-    // Re-initialize main LM
-    await lm.initializeModel(
-      params: CactusInitParams(
-        model: AppConstants.mainModel,
-        contextSize: AppConstants.defaultContextSize,
-      ),
-    );
+    // Re-initialize main LM with retry
+    int retries = 0;
+    while (retries < 3) {
+      try {
+        await lm.initializeModel(
+          params: CactusInitParams(
+            model: AppConstants.mainModel,
+            contextSize: AppConstants.defaultContextSize,
+          ),
+        );
+        break; // Success
+      } catch (e) {
+        retries++;
+        if (retries >= 3) rethrow;
+        await Future.delayed(Duration(milliseconds: 500 * retries));
+        lm = CactusLM(enableToolFiltering: true);
+      }
+    }
 
     // Re-connect RAG embedding generator to new LM instance
     rag.setEmbeddingGenerator((text) async {
@@ -170,6 +181,31 @@ class CactusService {
         }
       },
     );
+  }
+
+  /// Reinitialize main LM if context fails
+  Future<void> reinitializeMainLM() async {
+    try {
+      lm.unload();
+    } catch (e) {
+      // Ignore unload errors
+    }
+
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    lm = CactusLM(enableToolFiltering: true);
+    await lm.initializeModel(
+      params: CactusInitParams(
+        model: AppConstants.mainModel,
+        contextSize: AppConstants.defaultContextSize,
+      ),
+    );
+
+    // Re-connect RAG embedding generator
+    rag.setEmbeddingGenerator((text) async {
+      final result = await lm.generateEmbedding(text: text);
+      return result.embeddings;
+    });
   }
 
   void dispose() {

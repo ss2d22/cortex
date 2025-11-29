@@ -81,10 +81,10 @@ lib/
 
 ## Pre-built Downloads
 
-| Platform | File                       | Notes                     |
-| -------- | -------------------------- | ------------------------- |
-| Android  | `cortex-release.apk`       | Ready to install          |
-| iOS      | `cortex-ios.xcarchive.zip` | Requires signing in Xcode |
+| Platform | File                 | Notes            |
+| -------- | -------------------- | ---------------- |
+| Android  | `cortex-release.apk` | Ready to install |
+| iOS      | `cortex-release.ipa` | Ready to install |
 
 Available in `builds/` folder and repo root.
 
@@ -95,7 +95,7 @@ Available in `builds/` folder and repo root.
 flutter build apk --release
 
 # iOS (requires Apple Developer account)
-flutter build ipa --release
+flutter build ipa --release --export-method=development
 ```
 
 ## Cactus SDK Integration

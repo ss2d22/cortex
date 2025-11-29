@@ -69,8 +69,8 @@ class CactusService {
       // Ignore unload errors
     }
 
-    // Small delay to ensure file handles are released
-    await Future.delayed(const Duration(milliseconds: 100));
+    // Longer delay to ensure iOS releases file handles and memory
+    await Future.delayed(const Duration(milliseconds: 500));
 
     _visionLM = CactusLM();
 
@@ -83,10 +83,10 @@ class CactusService {
       },
     );
 
+    // Don't specify contextSize - let SDK use vision model's default
     await _visionLM!.initializeModel(
       params: CactusInitParams(
         model: AppConstants.visionModel,
-        contextSize: 1024, // Smaller context for vision
       ),
     );
 
@@ -106,8 +106,11 @@ class CactusService {
       _visionLM = null;
     }
 
-    // Small delay to ensure file handles are released
-    await Future.delayed(const Duration(milliseconds: 100));
+    // Longer delay to ensure iOS releases file handles and memory
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // Create fresh LM instance to avoid stale state
+    lm = CactusLM(enableToolFiltering: true);
 
     // Re-initialize main LM
     await lm.initializeModel(
@@ -116,6 +119,12 @@ class CactusService {
         contextSize: AppConstants.defaultContextSize,
       ),
     );
+
+    // Re-connect RAG embedding generator to new LM instance
+    rag.setEmbeddingGenerator((text) async {
+      final result = await lm.generateEmbedding(text: text);
+      return result.embeddings;
+    });
   }
 
   /// Lazy load STT model only when needed (for voice transcription)

@@ -24,13 +24,19 @@ The result: Cortex runs smoothly on mid-range phones, not just flagships. AI sho
 
 **100% Offline & Private** - Works in airplane mode. No internet required after initial model download. Your data physically cannot leave the device.
 
-**Human-Inspired Memory System** (Track 1: Memory Master)
-- *Episodic* - Stores conversations and experiences
-- *Semantic* - Extracts and maintains facts about you (name, job, interests, relationships)
-- *Procedural* - Learns your communication preferences and rules
-- *Working Memory* - Active context with 7+/-2 slots (Miller's Law)
+## Memory Architecture (Track 1: Memory Master)
 
-**Memory That Decays** - Just like human memory, unused information fades while frequently accessed memories strengthen. This keeps context relevant without infinite storage bloat.
+We modeled Cortex's memory after how human brains actually work. Four distinct memory systems work together:
+
+**Episodic Memory** - Your personal timeline. Every conversation gets stored with timestamps, so Cortex can recall "what we talked about yesterday" or "that idea you mentioned last week." These are full experiences, not just facts.
+
+**Semantic Memory** - The facts about you. When you mention you're a software engineer, have a dog named Max, or prefer dark mode - Cortex extracts these and stores them separately. The LLM uses tool calling to decide what's worth remembering. These facts persist across conversations and get surfaced when relevant.
+
+**Procedural Memory** - How you like to communicate. Do you want short answers or detailed explanations? Formal or casual tone? Cortex learns your preferences and adapts. These are the "rules" for how to interact with you specifically.
+
+**Working Memory** - The active context. Limited to 7±2 items (Miller's Law, just like human short-term memory). When you're mid-conversation, this holds the most relevant episodic memories, semantic facts, and procedural rules. Items compete for these slots based on relevance and recency.
+
+**Memory Decay** - Memories aren't forever. Just like human memory, unused information fades while frequently accessed memories strengthen. Each memory has an "importance" score that decays over time but gets boosted when retrieved. This keeps context relevant without infinite storage bloat - old, unused memories naturally fade away while important recurring information gets reinforced.
 
 **Real Utility Beyond Chat**
 - Voice memos transcribed and remembered
